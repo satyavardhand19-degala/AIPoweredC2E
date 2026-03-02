@@ -1,0 +1,28 @@
+# Virtual environments
+.venv/
+.venv*/
+venv/
+
+# Node / frontend
+node_modules/
+.next/
+out/
+dist/
+coverage/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Build artifacts
+*.tmp
