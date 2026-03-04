@@ -21,6 +21,19 @@ const OBJECT_STORE_BACKEND = process.env.OBJECT_STORE_BACKEND || 'local';
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
 const OPENAI_STT_MODEL = process.env.OPENAI_STT_MODEL || 'gpt-4o-mini-transcribe';
+
+const POSTGRES_CONFIG = {
+  host: process.env.POSTGRES_HOST || 'localhost',
+  port: Number(process.env.POSTGRES_PORT || 5432),
+  database: process.env.POSTGRES_DB || 'appdb',
+  user: process.env.POSTGRES_USER || 'postgres',
+  ssl: process.env.POSTGRES_SSL === 'true',
+  maxConnections: Number(process.env.POSTGRES_MAX_CONNECTIONS || 10),
+  connectionString: process.env.DATABASE_URL || undefined
+};
+if (process.env.POSTGRES_PASSWORD) {
+  POSTGRES_CONFIG.password = process.env.POSTGRES_PASSWORD;
+}
 const SESSION_COOKIE_NAME = 'ce_session';
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
 const SESSION_SECURE_COOKIE = process.env.NODE_ENV === 'production';
@@ -41,7 +54,8 @@ const telemetry = {
 const stateStore = createStateStore({
   backend: DATA_BACKEND,
   jsonFilePath: DATA_JSON_FILE,
-  sqliteFilePath: DATA_SQLITE_FILE
+  sqliteFilePath: DATA_SQLITE_FILE,
+  postgresConfig: POSTGRES_CONFIG
 });
 const objectStore = createObjectStore({
   backend: OBJECT_STORE_BACKEND,
