@@ -868,6 +868,52 @@ function logAiRun(db, projectId, taskType, inputRef, outputRef, status = 'succes
   });
 }
 
+function normalizeAuditMeta(meta = {}) {
+  const out = {};
+  for (const [key, value] of Object.entries(meta || {})) {
+    if (value === null || value === undefined) {
+      continue;
+    }
+    if (typeof value === 'string') {
+      out[key] = value.slice(0, 280);
+      continue;
+    }
+    if (typeof value === 'number' || typeof value === 'boolean') {
+      out[key] = value;
+      continue;
+    }
+    try {
+      out[key] = JSON.stringify(value).slice(0, 280);
+    } catch {
+      out[key] = String(value).slice(0, 280);
+    }
+  }
+  return out;
+}
+
+function logAudit(db, { projectId = null, user = null, action, targetType, targetId = null, result = 'success', req, meta = {} }) {
+  if (!Array.isArray(db.auditLogs)) {
+    db.auditLogs = [];
+  }
+  db.auditLogs.push({
+    id: randomUUID(),
+    projectId: projectId || null,
+    userId: user?.id || null,
+    userRole: user?.role || null,
+    action,
+    targetType,
+    targetId: targetId || null,
+    result,
+    ip: req ? getClientIp(req) : 'unknown',
+    userAgent: req ? String(req.headers['user-agent'] || '').slice(0, 200) : '',
+    meta: normalizeAuditMeta(meta),
+    createdAt: new Date().toISOString()
+  });
+  if (db.auditLogs.length > 5000) {
+    db.auditLogs = db.auditLogs.slice(-5000);
+  }
+}
+
 const server = createServer(async (req, res) => {
   try {
     const method = req.method || 'GET';
@@ -930,7 +976,9 @@ const server = createServer(async (req, res) => {
 
       const result = await mutateDb((db) => {
         let user = findUserByNameAndRole(db, name, role);
+        let createdUser = false;
         if (!user) {
+          createdUser = true;
           user = {
             id: randomUUID(),
             name,
@@ -945,15 +993,27 @@ const server = createServer(async (req, res) => {
         const expiresAt = new Date(now.getTime() + SESSION_TTL_SECONDS * 1000).toISOString();
         const token = randomUUID().replace(/-/g, '') + randomUUID().replace(/-/g, '');
         const csrfToken = randomUUID().replace(/-/g, '') + randomUUID().replace(/-/g, '');
+        const sessionId = randomUUID();
 
         db.sessions = db.sessions.filter((session) => Date.parse(session.expiresAt) > Date.now());
         db.sessions.push({
-          id: randomUUID(),
+          id: sessionId,
           token,
           csrfToken,
           userId: user.id,
           createdAt: nowIso,
           expiresAt
+        });
+        logAudit(db, {
+          action: 'auth.login',
+          targetType: 'session',
+          targetId: sessionId,
+          user,
+          req,
+          meta: {
+            createdUser,
+            role: user.role
+          }
         });
 
         return {
@@ -985,10 +1045,25 @@ const server = createServer(async (req, res) => {
     }
 
     if (method === 'POST' && pathname === '/api/auth/logout') {
-      const token = getSessionToken(req);
+      const authDb = await readDb();
+      const auth = getCurrentAuthContext(req, authDb);
+      const token = auth?.session?.token || getSessionToken(req);
       if (token) {
         await mutateDb((db) => {
+          const before = db.sessions.length;
           db.sessions = db.sessions.filter((session) => session.token !== token);
+          if (auth?.user) {
+            logAudit(db, {
+              action: 'auth.logout',
+              targetType: 'session',
+              targetId: auth.session.id,
+              user: auth.user,
+              req,
+              meta: {
+                revokedSessionCount: Math.max(0, before - db.sessions.length)
+              }
+            });
+          }
         });
       }
 
@@ -1054,6 +1129,18 @@ const server = createServer(async (req, res) => {
           createdAt: new Date().toISOString()
         };
         db.projects.push(project);
+        logAudit(db, {
+          action: 'project.create',
+          projectId: project.id,
+          targetType: 'project',
+          targetId: project.id,
+          user: currentUser,
+          req,
+          meta: {
+            title: project.title,
+            editorName: project.editorName
+          }
+        });
         return { project: projectSummary(project, db) };
       });
       return sendJson(res, 201, created);
@@ -1108,6 +1195,30 @@ const server = createServer(async (req, res) => {
         comments,
         checklistItems
       });
+    }
+
+    const auditLogsMatch = pathname.match(/^\/api\/projects\/([a-f0-9-]+)\/audit-logs$/i);
+    if (method === 'GET' && auditLogsMatch) {
+      const projectId = auditLogsMatch[1];
+      const db = await readDb();
+      const currentUser = getCurrentUserFromDb(req, db);
+      if (!currentUser) {
+        return unauthorized(res);
+      }
+      const project = ensureProject(db, projectId);
+      if (!project) {
+        return notFound(res);
+      }
+      if (!canAccessProject(project, currentUser)) {
+        return forbidden(res);
+      }
+      const limitRaw = Number(url.searchParams.get('limit') || 100);
+      const limit = Math.min(500, Math.max(1, Number.isFinite(limitRaw) ? Math.floor(limitRaw) : 100));
+      const auditLogs = (Array.isArray(db.auditLogs) ? db.auditLogs : [])
+        .filter((item) => item.projectId === projectId)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+        .slice(0, limit);
+      return sendJson(res, 200, { auditLogs });
     }
 
     const projectUploadMatch = pathname.match(/^\/api\/projects\/([a-f0-9-]+)\/upload$/i);
@@ -1183,6 +1294,19 @@ const server = createServer(async (req, res) => {
         if (versionLabel === 'v2') {
           latestProject.status = 'review_updated';
         }
+        logAudit(latestDb, {
+          action: 'asset.upload',
+          projectId,
+          targetType: 'asset',
+          targetId: asset.id,
+          user: currentUser,
+          req,
+          meta: {
+            versionLabel,
+            mimeType: asset.mimeType,
+            sizeBytes: asset.sizeBytes
+          }
+        });
       });
       return sendJson(res, 201, { asset });
     }
@@ -1321,6 +1445,20 @@ const server = createServer(async (req, res) => {
             sttResult.ok ? 'success' : 'fallback',
             sttError ? { providerError: sttError } : {}
           );
+          logAudit(latestDb, {
+            action: 'voice_note.upload',
+            projectId,
+            targetType: 'voice_note',
+            targetId: voiceNote.id,
+            user: currentUser,
+            req,
+            result: sttResult.ok ? 'success' : 'fallback',
+            meta: {
+              contextType,
+              attachedType: attached.type,
+              sttMode
+            }
+          });
 
           return { voiceNote, attached };
         });
@@ -1391,6 +1529,17 @@ const server = createServer(async (req, res) => {
 
           latestDb.briefInputs.push(briefInput);
           latestProject.status = 'brief_pending_ai';
+          logAudit(latestDb, {
+            action: 'brief_input.create',
+            projectId,
+            targetType: 'brief_input',
+            targetId: briefInput.id,
+            user: currentUser,
+            req,
+            meta: {
+              inputType: briefInput.inputType
+            }
+          });
           return { briefInput };
         });
         if (created.missingProject) {
@@ -1486,6 +1635,20 @@ const server = createServer(async (req, res) => {
           'success',
           providerError ? { providerError } : {}
         );
+        logAudit(mutableDb, {
+          action: 'ai.brief.generate',
+          projectId,
+          targetType: 'brief',
+          targetId: brief.id,
+          user: currentUser,
+          req,
+          result: mode === 'openai' ? 'success' : 'fallback',
+          meta: {
+            mode,
+            inputCount: projectInputs.length,
+            providerError: providerError || null
+          }
+        });
         return { brief };
       });
 
@@ -1588,6 +1751,19 @@ const server = createServer(async (req, res) => {
 
           latestDb.comments.push(comment);
           latestProject.status = 'feedback_added';
+          logAudit(latestDb, {
+            action: 'comment.create',
+            projectId,
+            targetType: 'comment',
+            targetId: comment.id,
+            user: currentUser,
+            req,
+            meta: {
+              source,
+              versionLabel,
+              timestampSec
+            }
+          });
           return { comment };
         });
 
@@ -1713,6 +1889,21 @@ const server = createServer(async (req, res) => {
           'success',
           providerError ? { providerError } : {}
         );
+        logAudit(mutableDb, {
+          action: 'ai.checklist.generate',
+          projectId,
+          targetType: 'checklist_generation',
+          targetId: generationId,
+          user: currentUser,
+          req,
+          result: mode === 'openai' ? 'success' : 'fallback',
+          meta: {
+            mode,
+            sourceCommentCount: sourceComments.length,
+            generatedItemCount: generatedItems.length,
+            providerError: providerError || null
+          }
+        });
 
         return {
           checklist: {
@@ -1801,9 +1992,22 @@ const server = createServer(async (req, res) => {
           return { missingItem: true };
         }
 
+        const previousStatus = item.status;
         item.status = status;
         item.updatedAt = new Date().toISOString();
         updateProjectStatusFromChecklist(item.projectId, db);
+        logAudit(db, {
+          action: 'checklist.status.update',
+          projectId: item.projectId,
+          targetType: 'checklist_item',
+          targetId: item.id,
+          user: currentUser,
+          req,
+          meta: {
+            previousStatus,
+            nextStatus: status
+          }
+        });
         return { item };
       });
       if (updated.missingItem) {
@@ -1906,6 +2110,19 @@ const server = createServer(async (req, res) => {
           'success',
           providerError ? { providerError } : {}
         );
+        logAudit(mutableDb, {
+          action: 'ai.version_summary.generate',
+          projectId,
+          targetType: 'project',
+          targetId: projectId,
+          user: currentUser,
+          req,
+          result: mode === 'openai' ? 'success' : 'fallback',
+          meta: {
+            mode,
+            providerError: providerError || null
+          }
+        });
         return { summary };
       });
 

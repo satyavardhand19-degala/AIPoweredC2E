@@ -70,3 +70,10 @@
 - Re-ran smoke coverage after migration:
   - `npm run test:security` passed
   - `npm run test:workflow` passed
+- Implemented Phase 3.5 audit baseline:
+  - Added persisted `auditLogs` collection to state store normalization/defaults
+  - Added audit event logging across key mutating workflows
+  - Added project-scoped audit retrieval endpoint: `GET /api/projects/:id/audit-logs`
+- Re-ran smoke coverage after audit integration:
+  - `npm run test:security` passed
+  - `npm run test:workflow` passed

@@ -3,12 +3,12 @@
 Last Updated: 2026-03-04
 
 ## Current Phase
-Phase 3.4: Persistence abstraction implemented (state/object stores with backend adapters).
+Phase 3.5: Audit trail baseline implemented on top of persistence abstraction.
 
 ## Immediate Next Task
-Phase 3.5 start point:
+Phase 3.6 start point:
 1. Add managed DB/object storage adapters (PostgreSQL/S3 or equivalent) behind existing interfaces.
-2. Add audit logging and deploy-ready observability hooks.
+2. Add deploy-ready observability hooks (structured metrics, centralized logs, alerts).
 3. Expand test suite from smoke scripts to CI-grade integration/e2e cases.
 
 ## What Is Completed
@@ -59,6 +59,11 @@ Phase 3.5 start point:
 - Added `lib/object_store.mjs` with local object-store adapter
 - Rewired `server.mjs` reads/writes/uploads to use adapter interfaces
 - Added SQLite state file ignore (`data/app_state.db`) and env flags for backend selection
+12. Phase 3.5 audit baseline completed:
+- Added persisted `auditLogs` state collection
+- Added mutation-side audit hooks for auth/project/upload/voice/brief/comment/checklist/AI summary actions
+- Added `GET /api/projects/:id/audit-logs` endpoint (project-access protected)
+- Re-ran smoke checks (`test:security`, `test:workflow`) successfully after audit integration
 
 ## Next Build Phase
 Phase 3: Production-grade integrations.
@@ -74,13 +79,14 @@ Ready today (demo quality):
 5. V1 -> V2 summary generation.
 6. Optional OpenAI integration with safe fallback.
 7. Basic authenticated collaboration with role-based restrictions.
+8. Baseline per-project audit visibility for key state mutations.
 
 Not production-ready yet:
 1. Local SQLite/JSON state and local uploads (no managed persistence).
 2. No background jobs/queue for long-running AI or media tasks.
 3. No deployment baseline (CI/CD, secrets, backups, monitoring, rate limits).
 4. No CI-grade automated test suite (only local smoke scripts currently).
-5. Security hardening is partial (no distributed rate limiting, no audit logs, limited CSRF/session policy depth).
+5. Security hardening is partial (no distributed rate limiting, no centralized audit pipeline, limited CSRF/session policy depth).
 
 ## Product Decisions Locked
 1. AI must be central, not cosmetic.

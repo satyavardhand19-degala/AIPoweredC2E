@@ -24,6 +24,7 @@ Phase 3.4 persistence abstraction with pluggable state/object stores.
   - `comments` when context is `feedback`
 - CSRF protection for mutating API routes
 - Basic in-memory API rate limiting
+- Persisted audit logs for sensitive mutating actions
 
 ## API surface (MVP)
 - `GET /api/auth/me`
@@ -32,6 +33,7 @@ Phase 3.4 persistence abstraction with pluggable state/object stores.
 - `GET /api/projects`
 - `POST /api/projects`
 - `GET /api/projects/:id/context`
+- `GET /api/projects/:id/audit-logs`
 - `POST /api/projects/:id/upload`
 - `POST/GET /api/projects/:id/voice-notes`
 - `POST/GET /api/projects/:id/brief-inputs`

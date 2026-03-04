@@ -28,6 +28,7 @@
     - editor uploads `v1`/`v2` and updates checklist item status
   - CSRF token enforcement on mutating API routes
   - In-memory request rate limiting (global API + auth login bucket)
+  - Persisted audit trail for key mutating actions (auth/project/upload/AI/checklist)
   - Persistence abstraction:
     - `createStateStore(...)` with `sqlite` (default) and `json` backends
     - `createObjectStore(...)` with local backend for uploaded files
@@ -46,7 +47,7 @@
     - `npm run test:workflow`
 - Pending:
   - Managed DB/object storage adapter implementation
-  - Security hardening (audit trail, stronger CSRF/session policy, distributed rate limiting)
+  - Security hardening (centralized audit sink, stronger CSRF/session policy, distributed rate limiting)
 
 ## Core Entities
 - User (creator/editor)

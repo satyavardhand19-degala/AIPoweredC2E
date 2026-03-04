@@ -23,6 +23,7 @@ Last Updated: 2026-03-04
 6. Voice-note upload and baseline STT pipeline are implemented with fallback behavior.
 7. Baseline CSRF protection and in-memory API rate limiting are implemented.
 8. Local executable smoke tests exist for security and workflow paths.
+9. Baseline persisted audit logs exist for key mutating actions.
 
 ## Critical Gaps Before Production
 1. Data and storage:
@@ -34,7 +35,7 @@ Last Updated: 2026-03-04
 3. Security:
 - in-memory rate limiting only (not distributed)
 - baseline CSRF/session hardening exists but needs stronger production policy
-- no audit logging
+- audit logs are local-only (no centralized sink/retention controls)
 4. Reliability/observability:
 - no structured logs/metrics/tracing
 - no error alerting
