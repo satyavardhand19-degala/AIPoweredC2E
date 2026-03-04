@@ -1,6 +1,6 @@
 # Creator-Editor AI Workflow (MVP)
 
-Phase 3.1 workflow implementation with authentication and access control.
+Phase 3.2 workflow implementation with voice-note upload + STT integration.
 
 ## What is implemented
 - Project creation for creator-editor pairs
@@ -18,6 +18,10 @@ Phase 3.1 workflow implementation with authentication and access control.
 - Role restrictions:
   - creator: create projects, upload `raw`
   - editor: upload `v1`/`v2`, update checklist status
+- Voice-note upload + transcription pipeline
+- Auto-attach voice transcript into:
+  - `briefInputs` when context is `brief`
+  - `comments` when context is `feedback`
 
 ## API surface (MVP)
 - `GET /api/auth/me`
@@ -27,6 +31,7 @@ Phase 3.1 workflow implementation with authentication and access control.
 - `POST /api/projects`
 - `GET /api/projects/:id/context`
 - `POST /api/projects/:id/upload`
+- `POST/GET /api/projects/:id/voice-notes`
 - `POST/GET /api/projects/:id/brief-inputs`
 - `POST /api/projects/:id/ai/brief`
 - `GET /api/projects/:id/brief/latest`
@@ -48,6 +53,7 @@ Copy `.env.example` to `.env` and set values as needed.
 
 - `OPENAI_API_KEY` (optional): enables real model generation for brief/checklist/summary endpoints.
 - `OPENAI_MODEL` (optional): defaults to `gpt-4.1-mini`.
+- `OPENAI_STT_MODEL` (optional): defaults to `gpt-4o-mini-transcribe`.
 - If no API key is present or provider call fails, endpoints automatically fall back to heuristic logic.
 
 ## Storage
@@ -55,6 +61,6 @@ Copy `.env.example` to `.env` and set values as needed.
 - Uploaded files: `uploads/`
 
 ## Next phase
-- Replace heuristic AI placeholder logic with real LLM/STT provider calls
-- Add voice-note file upload + speech-to-text pipeline
 - Add cloud object storage and database backend for deployment
+- Add production security hardening (rate limits, CSRF/session policy, audit logs)
+- Add automated test coverage and CI pipeline

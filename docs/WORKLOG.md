@@ -48,3 +48,10 @@
 - Prepared Phase 3.2 checkpoint:
   - Confirmed clean repo baseline after auth milestone.
   - Marked voice-note upload + STT integration as immediate next execution target.
+- Implemented Phase 3.2 voice-note + STT flow:
+  - Added `POST/GET /api/projects/:id/voice-notes`
+  - Added optional OpenAI transcription integration (`/v1/audio/transcriptions`)
+  - Added fallback transcript behavior when provider/key unavailable
+  - Auto-linked voice transcripts into `briefInputs` (brief context) or `comments` (feedback context)
+  - Added voice-note visibility in project context and UI
+- Validated voice-note flow end-to-end (auth, upload, attach, protected media access).

@@ -20,6 +20,7 @@ Last Updated: 2026-03-04
 3. AI integration is behind stable endpoints with fallback behavior.
 4. Basic data-consistency protection is implemented (serialized DB mutations).
 5. Basic session auth and project-level authorization are implemented.
+6. Voice-note upload and baseline STT pipeline are implemented with fallback behavior.
 
 ## Critical Gaps Before Production
 1. Data and storage:
@@ -27,7 +28,7 @@ Last Updated: 2026-03-04
 - local filesystem uploads (`uploads/`)
 2. AI and media pipeline:
 - no async worker queue
-- no voice-file speech-to-text pipeline
+- STT exists but is synchronous and not worker-backed
 3. Security:
 - no request rate limiting
 - no CSRF/session hardening
@@ -50,7 +51,7 @@ Last Updated: 2026-03-04
 - queue + worker for AI/media tasks
 - retry + idempotency handling
 4. AI media features:
-- speech-to-text pipeline for voice notes
+- harden speech-to-text pipeline for large/long audio and retry behavior
 - provider error handling and timeouts
 5. Reliability:
 - structured logs + health checks + monitoring dashboards

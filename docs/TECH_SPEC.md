@@ -26,13 +26,17 @@
   - Role-based action constraints:
     - creator creates projects and uploads `raw`
     - editor uploads `v1`/`v2` and updates checklist item status
+  - Voice-note upload + transcript pipeline:
+    - `POST/GET /api/projects/:id/voice-notes`
+    - optional OpenAI STT (`/v1/audio/transcriptions`)
+    - fallback transcript generation
+    - transcript auto-attached to brief inputs/comments
   - Optional OpenAI provider integration (`/v1/responses`) for:
     - structured brief generation
     - revision checklist generation
     - version summary generation
   - Automatic heuristic fallback when `OPENAI_API_KEY` is not configured or provider output fails validation
 - Pending:
-  - Voice-file upload -> STT pipeline
   - Cloud DB/object storage migration
   - Security hardening (secure cookies in production, CSRF/rate limits, audit trail)
 

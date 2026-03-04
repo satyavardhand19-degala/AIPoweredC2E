@@ -3,13 +3,13 @@
 Last Updated: 2026-03-04
 
 ## Current Phase
-Phase 3.1: Basic auth + project-level access control implemented.
+Phase 3.2: Voice-note upload + STT pipeline implemented.
 
 ## Immediate Next Task
-Phase 3.2 start point:
-1. Add voice-note file upload endpoint(s).
-2. Add speech-to-text pipeline.
-3. Feed transcript into existing brief/feedback AI flows.
+Phase 3.3 start point:
+1. Move persistence from local JSON/filesystem to managed DB + object storage.
+2. Add security hardening (rate limiting, CSRF/session policy, audit logs).
+3. Add automated tests for auth + core workflow.
 
 ## What Is Completed
 1. Problem statement read and decoded from local PDF.
@@ -40,10 +40,16 @@ Phase 3.2 start point:
 - Project-level authorization checks across API routes
 - Uploaded media access restricted by project membership
 - Role-aware permissions for create/upload/checklist updates
+8. Phase 3.2 voice workflow completed:
+- `POST/GET /api/projects/:id/voice-notes` endpoint added
+- Audio file upload + transcription pipeline added
+- Optional OpenAI STT integration via `/v1/audio/transcriptions`
+- Fallback transcript generation when STT/provider unavailable
+- Auto-attachment of transcript to `briefInputs` or `comments` based on context
+- Voice-note records exposed in project context + UI
 
 ## Next Build Phase
 Phase 3: Production-grade integrations.
-- Add voice file handling + STT pipeline.
 - Move persistence from local JSON to managed DB/object storage.
 - Add deployment/security/observability hardening for production.
 
@@ -59,11 +65,10 @@ Ready today (demo quality):
 
 Not production-ready yet:
 1. Local JSON DB and local uploads (no managed persistence).
-2. No voice-file STT pipeline yet.
-3. No background jobs/queue for long-running AI or media tasks.
-4. No deployment baseline (CI/CD, secrets, backups, monitoring, rate limits).
-5. No full automated test suite.
-6. Security hardening is partial (no rate limiting, CSRF protection, secure prod cookie policy).
+2. No background jobs/queue for long-running AI or media tasks.
+3. No deployment baseline (CI/CD, secrets, backups, monitoring, rate limits).
+4. No full automated test suite.
+5. Security hardening is partial (no rate limiting, CSRF protection, secure prod cookie policy).
 
 ## Product Decisions Locked
 1. AI must be central, not cosmetic.

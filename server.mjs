@@ -15,6 +15,7 @@ const UPLOAD_DIR = path.join(__dirname, 'uploads');
 const DB_FILE = path.join(DATA_DIR, 'db.json');
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
+const OPENAI_STT_MODEL = process.env.OPENAI_STT_MODEL || 'gpt-4o-mini-transcribe';
 const SESSION_COOKIE_NAME = 'ce_session';
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
 
@@ -25,6 +26,7 @@ function emptyDb() {
     projects: [],
     assets: [],
     briefInputs: [],
+    voiceNotes: [],
     briefs: [],
     comments: [],
     checklistItems: [],
@@ -42,6 +44,7 @@ function normalizeDb(db) {
     projects: Array.isArray(db.projects) ? db.projects : [],
     assets: Array.isArray(db.assets) ? db.assets : [],
     briefInputs: Array.isArray(db.briefInputs) ? db.briefInputs : [],
+    voiceNotes: Array.isArray(db.voiceNotes) ? db.voiceNotes : [],
     briefs: Array.isArray(db.briefs) ? db.briefs : [],
     comments: Array.isArray(db.comments) ? db.comments : [],
     checklistItems: Array.isArray(db.checklistItems) ? db.checklistItems : [],
@@ -214,6 +217,14 @@ function canAccessProject(project, user) {
 function extractProjectIdFromAssetFileName(fileName) {
   const match = String(fileName || '').match(/^([a-f0-9-]{36})_/i);
   return match ? match[1] : null;
+}
+
+function fallbackVoiceTranscript(fileName, contextType) {
+  const base = String(fileName || 'voice note').replace(/\.[a-z0-9]+$/i, '').replace(/[_-]+/g, ' ').trim();
+  if (contextType === 'feedback') {
+    return `Voice feedback note: ${base || 'transcript unavailable'}.`;
+  }
+  return `Voice brief note: ${base || 'transcript unavailable'}.`;
 }
 
 function parseDurationHint(text) {
@@ -568,6 +579,40 @@ async function callOpenAIJson({ schemaName, schema, systemPrompt, userPrompt }) 
     }
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : 'openai_request_failed' };
+  }
+}
+
+async function callOpenAITranscription({ buffer, fileName, mimeType }) {
+  if (!OPENAI_API_KEY) {
+    return { ok: false, error: 'missing_api_key' };
+  }
+
+  try {
+    const formData = new FormData();
+    const blob = new Blob([buffer], { type: mimeType || 'application/octet-stream' });
+    formData.append('file', blob, fileName || 'voice-note.wav');
+    formData.append('model', OPENAI_STT_MODEL);
+
+    const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${OPENAI_API_KEY}`
+      },
+      body: formData
+    });
+
+    if (!response.ok) {
+      return { ok: false, error: `openai_stt_http_${response.status}` };
+    }
+
+    const payload = await response.json();
+    const text = String(payload?.text || '').trim();
+    if (!text) {
+      return { ok: false, error: 'openai_stt_empty_text' };
+    }
+    return { ok: true, text };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'openai_stt_failed' };
   }
 }
 
@@ -934,6 +979,9 @@ const server = createServer(async (req, res) => {
       const briefs = db.briefs
         .filter((item) => item.projectId === projectId)
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      const voiceNotes = db.voiceNotes
+        .filter((item) => item.projectId === projectId)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
       const comments = db.comments
         .filter((item) => item.projectId === projectId)
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -951,6 +999,7 @@ const server = createServer(async (req, res) => {
         assets,
         briefInputs,
         briefs,
+        voiceNotes,
         comments,
         checklistItems
       });
@@ -1030,6 +1079,156 @@ const server = createServer(async (req, res) => {
         }
       });
       return sendJson(res, 201, { asset });
+    }
+
+    const voiceNotesMatch = pathname.match(/^\/api\/projects\/([a-f0-9-]+)\/voice-notes$/i);
+    if (voiceNotesMatch) {
+      const projectId = voiceNotesMatch[1];
+      const db = await readDb();
+      const currentUser = getCurrentUserFromDb(req, db);
+      if (!currentUser) {
+        return unauthorized(res);
+      }
+      const project = ensureProject(db, projectId);
+      if (!project) {
+        return notFound(res);
+      }
+      if (!canAccessProject(project, currentUser)) {
+        return forbidden(res);
+      }
+
+      if (method === 'GET') {
+        const voiceNotes = db.voiceNotes
+          .filter((item) => item.projectId === projectId)
+          .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+        return sendJson(res, 200, { voiceNotes });
+      }
+
+      if (method === 'POST') {
+        const contentType = req.headers['content-type'] || '';
+        if (!contentType.startsWith('multipart/form-data')) {
+          return badRequest(res, 'Expected multipart/form-data');
+        }
+
+        const { fields, file } = await parseMultipartBody(req, contentType);
+        const contextType = safeLower(fields.contextType || 'brief');
+        const versionLabel = safeLower(fields.versionLabel || 'v1');
+        const timestampSec = Number(fields.timestampSec || 0);
+
+        if (!['brief', 'feedback'].includes(contextType)) {
+          return badRequest(res, 'contextType must be brief or feedback');
+        }
+        if (contextType === 'feedback' && !['raw', 'v1', 'v2'].includes(versionLabel)) {
+          return badRequest(res, 'versionLabel must be raw, v1, or v2 for feedback context');
+        }
+        if (!Number.isFinite(timestampSec) || timestampSec < 0) {
+          return badRequest(res, 'timestampSec must be a non-negative number');
+        }
+        if (!file) {
+          return badRequest(res, 'No audio file found in request');
+        }
+
+        const safeOriginal = sanitizeFilename(file.originalName || 'voice-note.wav');
+        const storedName = `${projectId}_voice_${Date.now()}_${safeOriginal}`;
+        const filePath = path.join(UPLOAD_DIR, storedName);
+        await writeFile(filePath, file.buffer);
+
+        const sttResult = await callOpenAITranscription({
+          buffer: file.buffer,
+          fileName: file.originalName || 'voice-note.wav',
+          mimeType: file.mimeType
+        });
+
+        const transcript = sttResult.ok ? sttResult.text : fallbackVoiceTranscript(file.originalName, contextType);
+        const sttMode = sttResult.ok ? 'openai' : 'fallback';
+        const sttError = sttResult.ok ? '' : sttResult.error;
+
+        const created = await mutateDb((latestDb) => {
+          const latestProject = ensureProject(latestDb, projectId);
+          if (!latestProject) {
+            return { missingProject: true };
+          }
+
+          const voiceNote = {
+            id: randomUUID(),
+            projectId,
+            contextType,
+            versionLabel: contextType === 'feedback' ? versionLabel : null,
+            timestampSec: contextType === 'feedback' ? timestampSec : null,
+            uploaderUserId: currentUser.id,
+            uploaderRole: currentUser.role,
+            originalName: file.originalName,
+            mimeType: file.mimeType,
+            sizeBytes: file.buffer.length,
+            fileName: storedName,
+            url: `/uploads/${storedName}`,
+            transcript,
+            sttMode,
+            sttModel: sttResult.ok ? OPENAI_STT_MODEL : 'fallback',
+            sttError: sttError || null,
+            createdAt: new Date().toISOString()
+          };
+          latestDb.voiceNotes.push(voiceNote);
+
+          let attached = null;
+          if (contextType === 'brief') {
+            attached = {
+              type: 'briefInput',
+              value: {
+                id: randomUUID(),
+                projectId,
+                inputType: 'voice',
+                content: transcript,
+                createdBy: safeLower(currentUser.role),
+                voiceNoteId: voiceNote.id,
+                createdAt: new Date().toISOString()
+              }
+            };
+            latestDb.briefInputs.push(attached.value);
+            latestProject.status = 'brief_pending_ai';
+          } else {
+            attached = {
+              type: 'comment',
+              value: {
+                id: randomUUID(),
+                projectId,
+                versionLabel,
+                timestampSec,
+                text: transcript,
+                source: 'voice',
+                authorRole: safeLower(currentUser.role),
+                voiceNoteId: voiceNote.id,
+                createdAt: new Date().toISOString()
+              }
+            };
+            latestDb.comments.push(attached.value);
+            latestProject.status = 'feedback_added';
+          }
+
+          logAiRun(
+            latestDb,
+            projectId,
+            'voice_transcription',
+            { voiceNoteId: voiceNote.id, contextType },
+            { sttMode, attachedType: attached.type },
+            sttResult.ok ? 'success' : 'fallback',
+            sttError ? { providerError: sttError } : {}
+          );
+
+          return { voiceNote, attached };
+        });
+
+        if (created.missingProject) {
+          return notFound(res);
+        }
+
+        return sendJson(res, 201, {
+          ...created,
+          note: sttResult.ok
+            ? `Transcribed using OpenAI STT model ${OPENAI_STT_MODEL}.`
+            : `STT unavailable (${sttError || 'unknown_reason'}); fallback transcript applied.`
+        });
+      }
     }
 
     const briefInputMatch = pathname.match(/^\/api\/projects\/([a-f0-9-]+)\/brief-inputs$/i);

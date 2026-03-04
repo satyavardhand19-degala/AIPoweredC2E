@@ -194,6 +194,15 @@ button:hover {
   background: #f2fff6;
 }
 
+.voice-item {
+  border: 1px solid #d4dee9;
+  border-radius: 8px;
+  background: #fff;
+  padding: 0.55rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
 .actions {
   display: grid;
   gap: 0.4rem;

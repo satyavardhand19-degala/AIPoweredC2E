@@ -5,12 +5,14 @@ const authMeta = document.getElementById('auth-meta');
 const projectForm = document.getElementById('project-form');
 const uploadForm = document.getElementById('upload-form');
 const briefInputForm = document.getElementById('brief-input-form');
+const voiceForm = document.getElementById('voice-form');
 const feedbackForm = document.getElementById('feedback-form');
 
 const projectSelect = document.getElementById('project-select');
 const activeProjectMeta = document.getElementById('active-project-meta');
 const projectsEl = document.getElementById('projects');
 const checklistEl = document.getElementById('checklist');
+const voiceNotesEl = document.getElementById('voice-notes');
 const previewVideo = document.getElementById('preview-video');
 const previewMeta = document.getElementById('preview-meta');
 
@@ -87,6 +89,7 @@ function handleUnauthorized() {
   renderProjectOptions();
   renderProjects();
   renderChecklist();
+  renderVoiceNotes();
   renderContextDebug();
 }
 
@@ -110,7 +113,7 @@ function applyRoleDefaults() {
 }
 
 function setControlsEnabled(enabled) {
-  const guardForms = [projectForm, uploadForm, briefInputForm, feedbackForm];
+  const guardForms = [projectForm, uploadForm, briefInputForm, voiceForm, feedbackForm];
   for (const form of guardForms) {
     const controls = form.querySelectorAll('input, select, textarea, button');
     controls.forEach((el) => {
@@ -139,6 +142,7 @@ function renderAuth() {
     logoutButton.disabled = true;
     setControlsEnabled(false);
     applyRoleDefaults();
+    renderVoiceNotes();
     return;
   }
 
@@ -252,6 +256,33 @@ function renderChecklist() {
     .join('');
 }
 
+function renderVoiceNotes() {
+  const items = state.context?.voiceNotes || [];
+
+  if (!state.user) {
+    voiceNotesEl.innerHTML = '<p class="meta">Login to view voice notes.</p>';
+    return;
+  }
+
+  if (!items.length) {
+    voiceNotesEl.innerHTML = '<p class="meta">No voice notes uploaded yet.</p>';
+    return;
+  }
+
+  voiceNotesEl.innerHTML = items
+    .slice(0, 8)
+    .map((item) => {
+      return `
+        <div class="voice-item">
+          <div><strong>${escapeHtml(item.contextType)}</strong> | ${escapeHtml(item.sttMode)} | ${escapeHtml(item.originalName || 'voice')}</div>
+          <div class="meta">By ${escapeHtml(item.uploaderRole)}${item.versionLabel ? ` | ${escapeHtml(item.versionLabel)} @ ${formatTime(item.timestampSec || 0)}` : ''}</div>
+          <div class="meta">${escapeHtml(item.transcript || '')}</div>
+        </div>
+      `;
+    })
+    .join('');
+}
+
 function renderContextDebug() {
   if (!state.user) {
     aiOutput.textContent = 'Login to view context.';
@@ -271,7 +302,8 @@ function renderContextDebug() {
       user: state.user,
       latestBrief,
       recentComments: latestComments,
-      checklistCount: state.context.checklistItems?.length || 0
+      checklistCount: state.context.checklistItems?.length || 0,
+      voiceNoteCount: state.context.voiceNotes?.length || 0
     },
     null,
     2
@@ -319,6 +351,7 @@ async function fetchContext() {
   if (!state.user || !state.activeProjectId) {
     state.context = null;
     renderChecklist();
+    renderVoiceNotes();
     renderContextDebug();
     return;
   }
@@ -331,12 +364,14 @@ async function fetchContext() {
     }
     state.context = null;
     renderChecklist();
+    renderVoiceNotes();
     renderContextDebug();
     return;
   }
 
   state.context = data;
   renderChecklist();
+  renderVoiceNotes();
   renderContextDebug();
 }
 
@@ -477,6 +512,40 @@ briefInputForm.addEventListener('submit', async (event) => {
   }
 
   briefInputForm.reset();
+  await refreshAll();
+});
+
+voiceForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+
+  if (!state.activeProjectId) {
+    notifyError('Select an active project first.');
+    return;
+  }
+
+  const formData = new FormData(voiceForm);
+  const contextType = String(formData.get('contextType') || 'brief');
+  if (contextType !== 'feedback') {
+    formData.delete('versionLabel');
+    formData.delete('timestampSec');
+  }
+
+  const { ok, status, data } = await api(`/api/projects/${state.activeProjectId}/voice-notes`, {
+    method: 'POST',
+    body: formData
+  });
+
+  if (!ok) {
+    if (status === 401) {
+      handleUnauthorized();
+      return;
+    }
+    notifyError(`Voice note upload failed: ${data?.error || 'Unknown error'}`);
+    return;
+  }
+
+  aiOutput.textContent = JSON.stringify(data, null, 2);
+  voiceForm.reset();
   await refreshAll();
 });
 

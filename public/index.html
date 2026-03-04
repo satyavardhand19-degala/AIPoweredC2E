@@ -9,7 +9,7 @@
   <body>
     <main class="app-shell">
       <header class="hero">
-        <p class="eyebrow">MVP Phase 3 (Auth)</p>
+        <p class="eyebrow">MVP Phase 3.2 (Voice STT)</p>
         <h1>Creator-Editor Workflow Console</h1>
         <p>End-to-end flow with role-aware access: login -> brief -> uploads -> feedback -> checklist -> summary.</p>
       </header>
@@ -106,6 +106,36 @@
       </section>
 
       <section class="panel">
+        <h2>Voice Note Upload + STT</h2>
+        <form id="voice-form" class="stack">
+          <label>
+            Context Type
+            <select name="contextType" required>
+              <option value="brief">brief</option>
+              <option value="feedback">feedback</option>
+            </select>
+          </label>
+          <label>
+            Version (for feedback)
+            <select name="versionLabel">
+              <option value="v1">v1</option>
+              <option value="v2">v2</option>
+              <option value="raw">raw</option>
+            </select>
+          </label>
+          <label>
+            Timestamp (seconds, for feedback)
+            <input type="number" min="0" step="0.1" name="timestampSec" value="0" />
+          </label>
+          <label>
+            Voice File
+            <input type="file" name="file" accept="audio/*" required />
+          </label>
+          <button type="submit">Upload + Transcribe</button>
+        </form>
+      </section>
+
+      <section class="panel">
         <h2>Timestamp Feedback</h2>
         <form id="feedback-form" class="stack">
           <label>
@@ -150,6 +180,11 @@
       <section class="panel">
         <h2>Checklist</h2>
         <div id="checklist" class="stack"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Voice Notes</h2>
+        <div id="voice-notes" class="stack"></div>
       </section>
 
       <section class="panel">
