@@ -5,6 +5,12 @@ Last Updated: 2026-03-04
 ## Current Phase
 Phase 3.1: Basic auth + project-level access control implemented.
 
+## Immediate Next Task
+Phase 3.2 start point:
+1. Add voice-note file upload endpoint(s).
+2. Add speech-to-text pipeline.
+3. Feed transcript into existing brief/feedback AI flows.
+
 ## What Is Completed
 1. Problem statement read and decoded from local PDF.
 2. Scope, specs, MVP, architecture mechanism, workflow explained.

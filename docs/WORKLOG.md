@@ -45,3 +45,6 @@
   - Enforced role-based actions (creator creates project/uploads raw, editor uploads v1/v2 and updates checklist)
   - Updated frontend with login/logout and session-aware UX
 - Validated auth/access behavior end-to-end with role-specific API smoke tests.
+- Prepared Phase 3.2 checkpoint:
+  - Confirmed clean repo baseline after auth milestone.
+  - Marked voice-note upload + STT integration as immediate next execution target.
