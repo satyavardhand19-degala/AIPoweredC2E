@@ -3,7 +3,7 @@
 Last Updated: 2026-03-04
 
 ## Current Phase
-Phase 1: Baseline web app scaffold complete and runnable.
+Phase 2: End-to-end workflow APIs + UI completed with persisted state.
 
 ## What Is Completed
 1. Problem statement read and decoded from local PDF.
@@ -16,14 +16,22 @@ Phase 1: Baseline web app scaffold complete and runnable.
 - Versioned video upload (`raw`, `v1`, `v2`)
 - In-browser video playback
 - Placeholder AI endpoints for brief/checklist flows
+6. Phase 2 workflow completed:
+- Brief input persistence (`text`/`voice`/`url`)
+- AI brief generation persisted to `briefs`
+- Timestamped feedback persistence in `comments`
+- AI checklist generation persisted to `checklistItems`
+- Checklist item status updates
+- V1 -> V2 summary endpoint and UI control
+- Project context endpoint for full state hydration
+- Concurrent-write safety fix via serialized DB mutation queue
 
 ## Next Build Phase
-Phase 2: AI-integrated workflow completion.
-- Add brief input persistence (text/voice/url).
-- Add timestamped feedback persistence.
-- Convert mock AI endpoints to real model calls with strict JSON schema.
-- Generate and persist actionable revision checklists.
-- Add basic V1 -> V2 change summary endpoint and UI.
+Phase 3: Production-grade integrations.
+- Replace heuristic AI placeholders with real model provider calls.
+- Add voice file handling + STT pipeline.
+- Add auth and project-level access controls.
+- Move persistence from local JSON to managed DB/object storage.
 
 ## Product Decisions Locked
 1. AI must be central, not cosmetic.

@@ -9,9 +9,9 @@
   <body>
     <main class="app-shell">
       <header class="hero">
-        <p class="eyebrow">MVP Phase 1</p>
+        <p class="eyebrow">MVP Phase 2</p>
         <h1>Creator-Editor Workflow Console</h1>
-        <p>Build path: project setup -> video uploads (raw/v1/v2) -> in-browser playback.</p>
+        <p>End-to-end flow: brief input -> AI brief -> upload versions -> feedback -> AI checklist -> status -> version summary.</p>
       </header>
 
       <section class="panel">
@@ -34,12 +34,19 @@
       </section>
 
       <section class="panel">
-        <h2>Upload Video Version</h2>
-        <form id="upload-form" class="stack">
+        <h2>Project Selector</h2>
+        <div class="stack">
           <label>
-            Project
+            Active Project
             <select name="projectId" id="project-select" required></select>
           </label>
+          <p id="active-project-meta" class="meta">No active project</p>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Upload Video Version</h2>
+        <form id="upload-form" class="stack">
           <label>
             Version
             <select name="versionLabel" required>
@@ -57,7 +64,72 @@
       </section>
 
       <section class="panel">
-        <h2>Projects</h2>
+        <h2>Brief Input</h2>
+        <form id="brief-input-form" class="stack">
+          <label>
+            Input Type
+            <select name="inputType" required>
+              <option value="text">text</option>
+              <option value="voice">voice</option>
+              <option value="url">url</option>
+            </select>
+          </label>
+          <label>
+            Created By
+            <select name="createdBy" required>
+              <option value="creator">creator</option>
+              <option value="editor">editor</option>
+            </select>
+          </label>
+          <label>
+            Content
+            <textarea name="content" rows="3" required placeholder="Example: hook punchy, yellow captions, under 30s, end with comment CTA"></textarea>
+          </label>
+          <button type="submit">Save Brief Input</button>
+        </form>
+        <button id="generate-brief" type="button">Generate Structured Brief</button>
+      </section>
+
+      <section class="panel">
+        <h2>Timestamp Feedback</h2>
+        <form id="feedback-form" class="stack">
+          <label>
+            Version
+            <select name="versionLabel" required>
+              <option value="v1">v1</option>
+              <option value="v2">v2</option>
+              <option value="raw">raw</option>
+            </select>
+          </label>
+          <label>
+            Timestamp (seconds)
+            <input type="number" min="0" step="0.1" name="timestampSec" required placeholder="22.0" />
+          </label>
+          <label>
+            Source
+            <select name="source" required>
+              <option value="text">text</option>
+              <option value="voice">voice</option>
+            </select>
+          </label>
+          <label>
+            Author Role
+            <select name="authorRole" required>
+              <option value="creator">creator</option>
+              <option value="editor">editor</option>
+            </select>
+          </label>
+          <label>
+            Feedback
+            <textarea name="text" rows="3" required placeholder="Example: 0:22 text wording feels weak; change this line."></textarea>
+          </label>
+          <button type="submit">Add Feedback</button>
+        </form>
+        <button id="generate-checklist" type="button">Generate Revision Checklist</button>
+      </section>
+
+      <section class="panel wide">
+        <h2>Project Overview</h2>
         <div id="projects" class="cards"></div>
       </section>
 
@@ -68,12 +140,19 @@
       </section>
 
       <section class="panel">
-        <h2>AI Placeholder Actions</h2>
-        <div class="stack">
-          <button id="generate-brief" type="button">Generate Structured Brief (Mock)</button>
-          <button id="generate-checklist" type="button">Generate Revision Checklist (Mock)</button>
-          <pre id="ai-output" class="output"></pre>
-        </div>
+        <h2>Checklist</h2>
+        <div id="checklist" class="stack"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Version Summary</h2>
+        <button id="generate-summary" type="button">Generate V1 -> V2 Summary</button>
+        <pre id="summary-output" class="output"></pre>
+      </section>
+
+      <section class="panel wide">
+        <h2>AI / Debug Output</h2>
+        <pre id="ai-output" class="output"></pre>
       </section>
     </main>
 

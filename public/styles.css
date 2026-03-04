@@ -5,6 +5,7 @@
   --muted: #5b6472;
   --accent: #0d9488;
   --border: #d7d2c8;
+  --danger: #b91c1c;
 }
 
 * {
@@ -19,7 +20,7 @@ body {
 }
 
 .app-shell {
-  width: min(980px, 100% - 1.2rem);
+  width: min(1180px, 100% - 1.1rem);
   margin: 1rem auto 2rem;
   display: grid;
   gap: 0.9rem;
@@ -52,9 +53,13 @@ body {
   padding: 0.9rem;
 }
 
+.wide {
+  grid-column: 1 / -1;
+}
+
 .panel h2 {
   margin-top: 0;
-  font-size: 1.1rem;
+  font-size: 1.05rem;
 }
 
 .stack {
@@ -70,12 +75,17 @@ label {
 
 input,
 select,
+textarea,
 button {
   width: 100%;
   border: 1px solid #b6bcc8;
   border-radius: 8px;
   font: inherit;
   padding: 0.6rem 0.7rem;
+}
+
+textarea {
+  resize: vertical;
 }
 
 button {
@@ -110,7 +120,7 @@ button:hover {
 .meta {
   margin: 0.25rem 0;
   color: var(--muted);
-  font-size: 0.88rem;
+  font-size: 0.86rem;
 }
 
 .asset-list {
@@ -156,13 +166,38 @@ button:hover {
   font-size: 0.82rem;
 }
 
-@media (min-width: 900px) {
+.check-item {
+  border: 1px solid #ccd6e6;
+  border-radius: 8px;
+  padding: 0.55rem;
+  background: #ffffff;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.check-item.is-done {
+  border-color: #9ad9be;
+  background: #f2fff6;
+}
+
+.actions {
+  display: grid;
+  gap: 0.4rem;
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.actions button {
+  font-size: 0.78rem;
+  padding: 0.42rem 0.5rem;
+}
+
+@media (min-width: 950px) {
   .app-shell {
     grid-template-columns: 1fr 1fr;
   }
 
   .hero,
-  .panel:last-child {
+  .wide {
     grid-column: 1 / -1;
   }
 }

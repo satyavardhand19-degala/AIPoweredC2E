@@ -18,3 +18,15 @@
 - Added runtime artifact protection:
   - `.gitignore` rules for `data/db.json` and uploaded files
   - `.gitkeep` placeholders for `data/` and `uploads/`
+- Implemented Phase 2 connected workflow:
+  - Added `GET /api/projects/:id/context` for complete project state retrieval
+  - Added brief input persistence endpoints
+  - Added AI brief generation with persisted outputs
+  - Added timestamp feedback persistence endpoints
+  - Added AI checklist generation and persistence
+  - Added checklist status patch endpoint
+  - Added V1 -> V2 summary endpoint
+  - Updated frontend to execute the full creator-editor flow
+- Fixed backend data consistency bug:
+  - Introduced serialized DB mutation queue to prevent concurrent write overwrite.
+- Validated APIs end-to-end with live local server smoke tests, including concurrent generation calls.

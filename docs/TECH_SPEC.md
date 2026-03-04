@@ -14,12 +14,18 @@
   - Project CRUD (create/list)
   - Versioned asset upload (`raw`, `v1`, `v2`)
   - Browser playback of uploaded videos
-  - Mock AI endpoints for brief/checklist shape validation
+  - Brief input persistence (`text`, `voice`, `url`)
+  - AI brief generation with persisted brief objects
+  - Timestamped comments persistence
+  - AI checklist generation + checklist status transitions
+  - V1 -> V2 summary endpoint with readiness scoring
+  - Project context endpoint for full state hydration
+  - Serialized DB mutation queue to avoid lost updates on concurrent writes
 - Pending:
   - Real AI provider integration
-  - Timestamp comment persistence
-  - Revision checklist persistence and status updates
-  - V1 -> V2 structured diff summary
+  - Voice-file upload -> STT pipeline
+  - Auth and access control
+  - Cloud DB/object storage migration
 
 ## Core Entities
 - User (creator/editor)
