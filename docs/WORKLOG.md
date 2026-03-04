@@ -88,3 +88,8 @@
 - Pause checkpoint logged before shutdown:
   - Session paused on user request for break
   - Resume constraint recorded: migrate project state backend to PostgreSQL as the production DB target
+- Updated `.gitignore` with comprehensive patterns:
+  - Python artifacts (__pycache__, *.pyc, .pytest_cache, etc.)
+  - Build/cache directories (build/, .mypy_cache/, .ruff_cache/)
+  - Editor temp files (*.swp, *~)
+  - Additional runtime directories (.entire/, .opencode/, .gemini/)
