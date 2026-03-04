@@ -1,0 +1,11 @@
+{
+  "name": "creator-editor-ai-workflow",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AI-powered workflow demo for short-form video creators and editors",
+  "scripts": {
+    "dev": "node server.mjs",
+    "start": "node server.mjs"
+  }
+}

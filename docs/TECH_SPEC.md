@@ -1,13 +1,25 @@
 # Technical Spec (MVP)
 
 ## Stack
-- Frontend: Next.js + TypeScript + Tailwind
-- Backend: Next.js API routes
-- DB: PostgreSQL + Prisma
-- File storage: S3-compatible object storage
+- Frontend: Vanilla HTML/CSS/JS (mobile-first)
+- Backend: Node.js HTTP server (`server.mjs`)
+- DB: Local JSON file (`data/db.json`) for MVP velocity
+- File storage: Local filesystem (`uploads/`)
 - AI services:
   - Speech-to-text for voice notes
   - LLM for brief extraction, feedback summarization, version diff summary
+
+## Current Implementation Status
+- Implemented:
+  - Project CRUD (create/list)
+  - Versioned asset upload (`raw`, `v1`, `v2`)
+  - Browser playback of uploaded videos
+  - Mock AI endpoints for brief/checklist shape validation
+- Pending:
+  - Real AI provider integration
+  - Timestamp comment persistence
+  - Revision checklist persistence and status updates
+  - V1 -> V2 structured diff summary
 
 ## Core Entities
 - User (creator/editor)

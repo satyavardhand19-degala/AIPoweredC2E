@@ -9,3 +9,12 @@
   - Data model and API contracts
   - Execution plan and demo criteria
 - Added persistent context files so future sessions can resume without restating full context.
+- Implemented Phase 1 baseline web app:
+  - `server.mjs` Node HTTP server
+  - `public/` mobile-first UI for project creation, upload, and playback
+  - `data/` JSON persistence and `uploads/` file storage
+  - API endpoints for health, projects, uploads
+  - Placeholder AI endpoints for brief and checklist generation
+- Added runtime artifact protection:
+  - `.gitignore` rules for `data/db.json` and uploaded files
+  - `.gitkeep` placeholders for `data/` and `uploads/`

@@ -1,0 +1,168 @@
+:root {
+  --bg: #f4efe6;
+  --panel: #fffdf7;
+  --text: #1f2937;
+  --muted: #5b6472;
+  --accent: #0d9488;
+  --border: #d7d2c8;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+  background: radial-gradient(circle at 0% 0%, #fce7c6, var(--bg) 45%);
+  color: var(--text);
+}
+
+.app-shell {
+  width: min(980px, 100% - 1.2rem);
+  margin: 1rem auto 2rem;
+  display: grid;
+  gap: 0.9rem;
+}
+
+.hero {
+  background: linear-gradient(145deg, #fff5d8, #fcefc8);
+  border: 1px solid #f0dca5;
+  border-radius: 14px;
+  padding: 1rem;
+}
+
+.hero h1 {
+  margin: 0.3rem 0;
+  font-size: clamp(1.25rem, 3vw, 2rem);
+}
+
+.eyebrow {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.75rem;
+  color: #7a5c1e;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.9rem;
+}
+
+.panel h2 {
+  margin-top: 0;
+  font-size: 1.1rem;
+}
+
+.stack {
+  display: grid;
+  gap: 0.7rem;
+}
+
+label {
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.9rem;
+}
+
+input,
+select,
+button {
+  width: 100%;
+  border: 1px solid #b6bcc8;
+  border-radius: 8px;
+  font: inherit;
+  padding: 0.6rem 0.7rem;
+}
+
+button {
+  border-color: transparent;
+  background: var(--accent);
+  color: #f0fdfa;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+button:hover {
+  filter: brightness(0.93);
+}
+
+.cards {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.card {
+  border: 1px solid #d8deea;
+  border-radius: 10px;
+  padding: 0.7rem;
+  background: #fcfdff;
+}
+
+.card h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.meta {
+  margin: 0.25rem 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.asset-list {
+  margin: 0.6rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.asset-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  border: 1px dashed #cbd3df;
+  border-radius: 8px;
+  padding: 0.45rem;
+  background: #fff;
+}
+
+.asset-row button {
+  width: auto;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.84rem;
+}
+
+#preview-video {
+  width: 100%;
+  max-height: 55vh;
+  border-radius: 8px;
+  background: #0f172a;
+}
+
+.output {
+  margin: 0;
+  padding: 0.7rem;
+  border: 1px solid #d8deea;
+  border-radius: 8px;
+  background: #f7fbff;
+  min-height: 120px;
+  overflow: auto;
+  font-size: 0.82rem;
+}
+
+@media (min-width: 900px) {
+  .app-shell {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .hero,
+  .panel:last-child {
+    grid-column: 1 / -1;
+  }
+}

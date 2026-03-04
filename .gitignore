@@ -26,3 +26,9 @@ Thumbs.db
 
 # Build artifacts
 *.tmp
+
+# Local runtime state
+data/db.json
+uploads/*
+!uploads/.gitkeep
+!data/.gitkeep
