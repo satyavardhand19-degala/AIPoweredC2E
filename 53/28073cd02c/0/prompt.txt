@@ -1,0 +1,9 @@
+create a gitignore folder and add all the executables, artifacts other typical gitignore files.
+
+---
+
+commit all the changes, update the progress of the project.
+
+---
+
+now give me the status of the project? what stage are we at? whats left more now to get the production ready project?
