@@ -1,0 +1,5 @@
+check the status of the project. check if gitignore is created ? if not add gitignore and add .executables, builds, artifact and other typical gitignore files
+
+---
+
+git commit all the changes
