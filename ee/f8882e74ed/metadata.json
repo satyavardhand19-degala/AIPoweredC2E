@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "eef8882e74ed",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "docs/WORKLOG.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/ee/f8882e74ed/0/metadata.json",
+      "transcript": "/ee/f8882e74ed/0/full.jsonl",
+      "context": "/ee/f8882e74ed/0/context.md",
+      "content_hash": "/ee/f8882e74ed/0/content_hash.txt",
+      "prompt": "/ee/f8882e74ed/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 122,
+    "cache_creation_tokens": 242,
+    "cache_read_tokens": 17051,
+    "output_tokens": 228,
+    "api_call_count": 2
+  }
+}
