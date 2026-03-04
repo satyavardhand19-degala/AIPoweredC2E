@@ -18,6 +18,12 @@ const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
 const OPENAI_STT_MODEL = process.env.OPENAI_STT_MODEL || 'gpt-4o-mini-transcribe';
 const SESSION_COOKIE_NAME = 'ce_session';
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
+const SESSION_SECURE_COOKIE = process.env.NODE_ENV === 'production';
+const CSRF_HEADER_NAME = 'x-csrf-token';
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX || 240);
+const RATE_LIMIT_AUTH_MAX = Number(process.env.RATE_LIMIT_AUTH_MAX || 30);
+const rateLimitStore = new Map();
 
 function emptyDb() {
   return {
@@ -179,13 +185,18 @@ function getSessionToken(req) {
   return cookies[SESSION_COOKIE_NAME] || '';
 }
 
-function getCurrentUserFromDb(req, db) {
+function getSessionFromDb(req, db) {
   const token = getSessionToken(req);
   if (!token) {
     return null;
   }
   const now = Date.now();
   const session = db.sessions.find((entry) => entry.token === token && Date.parse(entry.expiresAt) > now);
+  return session || null;
+}
+
+function getCurrentUserFromDb(req, db) {
+  const session = getSessionFromDb(req, db);
   if (!session) {
     return null;
   }
@@ -198,6 +209,92 @@ function getCurrentUserFromDb(req, db) {
     name: user.name,
     role: user.role
   };
+}
+
+function getCurrentAuthContext(req, db) {
+  const session = getSessionFromDb(req, db);
+  if (!session) {
+    return null;
+  }
+  const user = db.users.find((entry) => entry.id === session.userId);
+  if (!user) {
+    return null;
+  }
+  return {
+    user: {
+      id: user.id,
+      name: user.name,
+      role: user.role
+    },
+    session
+  };
+}
+
+function getClientIp(req) {
+  const header = req.headers['x-forwarded-for'];
+  if (typeof header === 'string' && header.trim()) {
+    return header.split(',')[0].trim();
+  }
+  return req.socket?.remoteAddress || 'unknown';
+}
+
+function pickRateLimitBucket(pathname) {
+  if (pathname === '/api/auth/login') {
+    return 'auth-login';
+  }
+  if (pathname.startsWith('/api/auth/')) {
+    return 'auth';
+  }
+  return 'api';
+}
+
+function applyRateLimit(req, pathname) {
+  const ip = getClientIp(req);
+  const bucket = pickRateLimitBucket(pathname);
+  const key = `${ip}:${bucket}`;
+  const now = Date.now();
+  const max = bucket === 'auth-login' ? RATE_LIMIT_AUTH_MAX : RATE_LIMIT_MAX;
+
+  if (rateLimitStore.size > 2000) {
+    for (const [entryKey, entry] of rateLimitStore.entries()) {
+      if (now >= entry.resetAt) {
+        rateLimitStore.delete(entryKey);
+      }
+    }
+  }
+
+  const current = rateLimitStore.get(key);
+  if (!current || now >= current.resetAt) {
+    rateLimitStore.set(key, {
+      count: 1,
+      resetAt: now + RATE_LIMIT_WINDOW_MS
+    });
+    return { allowed: true };
+  }
+
+  if (current.count >= max) {
+    return {
+      allowed: false,
+      retryAfterSeconds: Math.max(1, Math.ceil((current.resetAt - now) / 1000))
+    };
+  }
+
+  current.count += 1;
+  rateLimitStore.set(key, current);
+  return { allowed: true };
+}
+
+function shouldEnforceCsrf(method, pathname) {
+  if (!pathname.startsWith('/api/')) {
+    return false;
+  }
+  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+    return false;
+  }
+  if (pathname === '/api/auth/login') {
+    return false;
+  }
+  return true;
 }
 
 function canAccessProject(project, user) {
@@ -805,14 +902,46 @@ const server = createServer(async (req, res) => {
     const url = new URL(req.url || '/', `http://${req.headers.host}`);
     const pathname = url.pathname;
 
+    if (pathname.startsWith('/api/')) {
+      const limit = applyRateLimit(req, pathname);
+      if (!limit.allowed) {
+        return sendJson(
+          res,
+          429,
+          {
+            error: 'Too many requests',
+            retryAfterSeconds: limit.retryAfterSeconds
+          },
+          {
+            'Retry-After': String(limit.retryAfterSeconds)
+          }
+        );
+      }
+    }
+
     if (method === 'GET' && pathname === '/api/health') {
       return sendJson(res, 200, { ok: true, time: new Date().toISOString() });
     }
 
+    if (shouldEnforceCsrf(method, pathname)) {
+      const db = await readDb();
+      const auth = getCurrentAuthContext(req, db);
+      if (!auth) {
+        return unauthorized(res);
+      }
+      const provided = String(req.headers[CSRF_HEADER_NAME] || '').trim();
+      if (!provided || provided !== auth.session.csrfToken) {
+        return forbidden(res, 'Invalid CSRF token');
+      }
+    }
+
     if (method === 'GET' && pathname === '/api/auth/me') {
       const db = await readDb();
-      const user = getCurrentUserFromDb(req, db);
-      return sendJson(res, 200, { user });
+      const auth = getCurrentAuthContext(req, db);
+      return sendJson(res, 200, {
+        user: auth?.user || null,
+        csrfToken: auth?.session?.csrfToken || null
+      });
     }
 
     if (method === 'POST' && pathname === '/api/auth/login') {
@@ -843,11 +972,13 @@ const server = createServer(async (req, res) => {
         const nowIso = now.toISOString();
         const expiresAt = new Date(now.getTime() + SESSION_TTL_SECONDS * 1000).toISOString();
         const token = randomUUID().replace(/-/g, '') + randomUUID().replace(/-/g, '');
+        const csrfToken = randomUUID().replace(/-/g, '') + randomUUID().replace(/-/g, '');
 
         db.sessions = db.sessions.filter((session) => Date.parse(session.expiresAt) > Date.now());
         db.sessions.push({
           id: randomUUID(),
           token,
+          csrfToken,
           userId: user.id,
           createdAt: nowIso,
           expiresAt
@@ -855,7 +986,8 @@ const server = createServer(async (req, res) => {
 
         return {
           user: { id: user.id, name: user.name, role: user.role },
-          token
+          token,
+          csrfToken
         };
       });
 
@@ -864,14 +996,15 @@ const server = createServer(async (req, res) => {
         path: '/',
         httpOnly: true,
         sameSite: 'Lax',
-        secure: false
+        secure: SESSION_SECURE_COOKIE
       });
 
       return sendJson(
         res,
         200,
         {
-          user: result.user
+          user: result.user,
+          csrfToken: result.csrfToken
         },
         {
           'Set-Cookie': cookie
@@ -892,7 +1025,7 @@ const server = createServer(async (req, res) => {
         path: '/',
         httpOnly: true,
         sameSite: 'Lax',
-        secure: false
+        secure: SESSION_SECURE_COOKIE
       });
       return sendJson(
         res,

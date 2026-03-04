@@ -3,13 +3,13 @@
 Last Updated: 2026-03-04
 
 ## Current Phase
-Phase 3.2: Voice-note upload + STT pipeline implemented.
+Phase 3.3: Security hardening baseline (CSRF + rate limiting + security test) implemented.
 
 ## Immediate Next Task
-Phase 3.3 start point:
+Phase 3.4 start point:
 1. Move persistence from local JSON/filesystem to managed DB + object storage.
-2. Add security hardening (rate limiting, CSRF/session policy, audit logs).
-3. Add automated tests for auth + core workflow.
+2. Add broader automated tests for end-to-end creator/editor workflow.
+3. Add audit logging and deploy-ready observability hooks.
 
 ## What Is Completed
 1. Problem statement read and decoded from local PDF.
@@ -47,6 +47,11 @@ Phase 3.3 start point:
 - Fallback transcript generation when STT/provider unavailable
 - Auto-attachment of transcript to `briefInputs` or `comments` based on context
 - Voice-note records exposed in project context + UI
+9. Phase 3.3 security baseline completed:
+- CSRF token generation on session login + CSRF validation on mutating API routes
+- In-memory API rate limiting (including dedicated auth-login bucket)
+- Session cookie `Secure` flag now environment-aware (`NODE_ENV=production`)
+- Added runnable security smoke test script (`npm run test:security`)
 
 ## Next Build Phase
 Phase 3: Production-grade integrations.
@@ -68,7 +73,7 @@ Not production-ready yet:
 2. No background jobs/queue for long-running AI or media tasks.
 3. No deployment baseline (CI/CD, secrets, backups, monitoring, rate limits).
 4. No full automated test suite.
-5. Security hardening is partial (no rate limiting, CSRF protection, secure prod cookie policy).
+5. Security hardening is partial (no distributed rate limiting, no audit logs, limited CSRF/session policy depth).
 
 ## Product Decisions Locked
 1. AI must be central, not cosmetic.

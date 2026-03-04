@@ -22,6 +22,8 @@ Phase 3.2 workflow implementation with voice-note upload + STT integration.
 - Auto-attach voice transcript into:
   - `briefInputs` when context is `brief`
   - `comments` when context is `feedback`
+- CSRF protection for mutating API routes
+- Basic in-memory API rate limiting
 
 ## API surface (MVP)
 - `GET /api/auth/me`
@@ -54,7 +56,13 @@ Copy `.env.example` to `.env` and set values as needed.
 - `OPENAI_API_KEY` (optional): enables real model generation for brief/checklist/summary endpoints.
 - `OPENAI_MODEL` (optional): defaults to `gpt-4.1-mini`.
 - `OPENAI_STT_MODEL` (optional): defaults to `gpt-4o-mini-transcribe`.
+- `RATE_LIMIT_MAX` and `RATE_LIMIT_AUTH_MAX` tune in-memory API throttling.
 - If no API key is present or provider call fails, endpoints automatically fall back to heuristic logic.
+
+## Security smoke test
+```bash
+npm run test:security
+```
 
 ## Storage
 - Data: `data/db.json`

@@ -21,6 +21,7 @@ Last Updated: 2026-03-04
 4. Basic data-consistency protection is implemented (serialized DB mutations).
 5. Basic session auth and project-level authorization are implemented.
 6. Voice-note upload and baseline STT pipeline are implemented with fallback behavior.
+7. Baseline CSRF protection and in-memory API rate limiting are implemented.
 
 ## Critical Gaps Before Production
 1. Data and storage:
@@ -30,8 +31,8 @@ Last Updated: 2026-03-04
 - no async worker queue
 - STT exists but is synchronous and not worker-backed
 3. Security:
-- no request rate limiting
-- no CSRF/session hardening
+- in-memory rate limiting only (not distributed)
+- baseline CSRF/session hardening exists but needs stronger production policy
 - no audit logging
 4. Reliability/observability:
 - no structured logs/metrics/tracing

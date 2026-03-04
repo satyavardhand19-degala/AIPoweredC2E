@@ -6,6 +6,7 @@
   "description": "AI-powered workflow demo for short-form video creators and editors",
   "scripts": {
     "dev": "node server.mjs",
-    "start": "node server.mjs"
+    "start": "node server.mjs",
+    "test:security": "node scripts/security_smoke_test.mjs"
   }
 }

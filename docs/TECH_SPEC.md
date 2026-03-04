@@ -26,6 +26,8 @@
   - Role-based action constraints:
     - creator creates projects and uploads `raw`
     - editor uploads `v1`/`v2` and updates checklist item status
+  - CSRF token enforcement on mutating API routes
+  - In-memory request rate limiting (global API + auth login bucket)
   - Voice-note upload + transcript pipeline:
     - `POST/GET /api/projects/:id/voice-notes`
     - optional OpenAI STT (`/v1/audio/transcriptions`)
@@ -38,7 +40,7 @@
   - Automatic heuristic fallback when `OPENAI_API_KEY` is not configured or provider output fails validation
 - Pending:
   - Cloud DB/object storage migration
-  - Security hardening (secure cookies in production, CSRF/rate limits, audit trail)
+  - Security hardening (audit trail, stronger CSRF/session policy, distributed rate limiting)
 
 ## Core Entities
 - User (creator/editor)

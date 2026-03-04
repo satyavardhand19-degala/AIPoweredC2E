@@ -25,6 +25,7 @@ const summaryButton = document.getElementById('generate-summary');
 
 let state = {
   user: null,
+  csrfToken: null,
   projects: [],
   activeProjectId: null,
   context: null
@@ -59,11 +60,17 @@ function currentProject() {
 }
 
 async function api(path, options = {}) {
+  const method = String(options.method || 'GET').toUpperCase();
+  const headers = {
+    ...(options.headers || {})
+  };
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) && path !== '/api/auth/login' && state.csrfToken) {
+    headers['x-csrf-token'] = state.csrfToken;
+  }
+
   const response = await fetch(path, {
     ...options,
-    headers: {
-      ...(options.headers || {})
-    }
+    headers
   });
 
   let data = null;
@@ -82,6 +89,7 @@ async function api(path, options = {}) {
 
 function handleUnauthorized() {
   state.user = null;
+  state.csrfToken = null;
   state.projects = [];
   state.activeProjectId = null;
   state.context = null;
@@ -312,10 +320,12 @@ function renderContextDebug() {
 
 async function restoreSession() {
   const { ok, data } = await api('/api/auth/me');
-  if (!ok || !data?.user) {
+  if (!ok || !data?.user || !data?.csrfToken) {
     state.user = null;
+    state.csrfToken = null;
   } else {
     state.user = data.user;
+    state.csrfToken = data.csrfToken;
   }
   renderAuth();
 }
@@ -400,6 +410,7 @@ authForm.addEventListener('submit', async (event) => {
   }
 
   state.user = data.user;
+  state.csrfToken = data.csrfToken || null;
   authForm.reset();
   renderAuth();
   await refreshAll();

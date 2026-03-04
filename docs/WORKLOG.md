@@ -55,3 +55,8 @@
   - Auto-linked voice transcripts into `briefInputs` (brief context) or `comments` (feedback context)
   - Added voice-note visibility in project context and UI
 - Validated voice-note flow end-to-end (auth, upload, attach, protected media access).
+- Implemented Phase 3.3 security baseline:
+  - Added CSRF token issuance and mutating-route CSRF validation
+  - Added in-memory request throttling with auth-specific bucket
+  - Made cookie `Secure` behavior environment-aware
+  - Added runnable security smoke test script (`scripts/security_smoke_test.mjs`)
