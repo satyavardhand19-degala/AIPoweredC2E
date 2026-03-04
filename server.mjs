@@ -1,8 +1,10 @@
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createStateStore } from './lib/state_store.mjs';
+import { createObjectStore } from './lib/object_store.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -12,7 +14,10 @@ const HOST = process.env.HOST || '127.0.0.1';
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const DATA_DIR = path.join(__dirname, 'data');
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
-const DB_FILE = path.join(DATA_DIR, 'db.json');
+const DATA_JSON_FILE = path.join(DATA_DIR, 'db.json');
+const DATA_SQLITE_FILE = path.join(DATA_DIR, 'app_state.db');
+const DATA_BACKEND = process.env.DATA_BACKEND || 'sqlite';
+const OBJECT_STORE_BACKEND = process.env.OBJECT_STORE_BACKEND || 'local';
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
 const OPENAI_STT_MODEL = process.env.OPENAI_STT_MODEL || 'gpt-4o-mini-transcribe';
@@ -24,59 +29,30 @@ const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX || 240);
 const RATE_LIMIT_AUTH_MAX = Number(process.env.RATE_LIMIT_AUTH_MAX || 30);
 const rateLimitStore = new Map();
-
-function emptyDb() {
-  return {
-    users: [],
-    sessions: [],
-    projects: [],
-    assets: [],
-    briefInputs: [],
-    voiceNotes: [],
-    briefs: [],
-    comments: [],
-    checklistItems: [],
-    aiRuns: []
-  };
-}
-
-function normalizeDb(db) {
-  const base = emptyDb();
-  return {
-    ...base,
-    ...db,
-    users: Array.isArray(db.users) ? db.users : [],
-    sessions: Array.isArray(db.sessions) ? db.sessions : [],
-    projects: Array.isArray(db.projects) ? db.projects : [],
-    assets: Array.isArray(db.assets) ? db.assets : [],
-    briefInputs: Array.isArray(db.briefInputs) ? db.briefInputs : [],
-    voiceNotes: Array.isArray(db.voiceNotes) ? db.voiceNotes : [],
-    briefs: Array.isArray(db.briefs) ? db.briefs : [],
-    comments: Array.isArray(db.comments) ? db.comments : [],
-    checklistItems: Array.isArray(db.checklistItems) ? db.checklistItems : [],
-    aiRuns: Array.isArray(db.aiRuns) ? db.aiRuns : []
-  };
-}
+const stateStore = createStateStore({
+  backend: DATA_BACKEND,
+  jsonFilePath: DATA_JSON_FILE,
+  sqliteFilePath: DATA_SQLITE_FILE
+});
+const objectStore = createObjectStore({
+  backend: OBJECT_STORE_BACKEND,
+  baseDir: UPLOAD_DIR,
+  baseUrl: '/uploads'
+});
 
 async function ensureStorage() {
   await mkdir(PUBLIC_DIR, { recursive: true });
   await mkdir(DATA_DIR, { recursive: true });
-  await mkdir(UPLOAD_DIR, { recursive: true });
-
-  try {
-    await stat(DB_FILE);
-  } catch {
-    await writeFile(DB_FILE, JSON.stringify(emptyDb(), null, 2), 'utf8');
-  }
+  await stateStore.init();
+  await objectStore.init();
 }
 
 async function readDb() {
-  const raw = await readFile(DB_FILE, 'utf8');
-  return normalizeDb(JSON.parse(raw));
+  return stateStore.read();
 }
 
 async function writeDb(db) {
-  await writeFile(DB_FILE, JSON.stringify(normalizeDb(db), null, 2), 'utf8');
+  await stateStore.write(db);
 }
 
 let dbMutationQueue = Promise.resolve();
@@ -118,10 +94,6 @@ function unauthorized(res, message = 'Authentication required') {
 
 function forbidden(res, message = 'Forbidden') {
   sendJson(res, 403, { error: message });
-}
-
-function sanitizeFilename(name) {
-  return name.replace(/[^a-zA-Z0-9._-]/g, '_');
 }
 
 function safeLower(value) {
@@ -1181,10 +1153,11 @@ const server = createServer(async (req, res) => {
         return notFound(res);
       }
 
-      const safeOriginal = sanitizeFilename(file.originalName || 'upload.bin');
-      const storedName = `${projectId}_${versionLabel}_${Date.now()}_${safeOriginal}`;
-      const filePath = path.join(UPLOAD_DIR, storedName);
-      await writeFile(filePath, file.buffer);
+      const stored = await objectStore.put({
+        keyPrefix: `${projectId}_${versionLabel}`,
+        originalName: file.originalName || 'upload.bin',
+        buffer: file.buffer
+      });
 
       const asset = {
         id: randomUUID(),
@@ -1192,9 +1165,9 @@ const server = createServer(async (req, res) => {
         versionLabel,
         originalName: file.originalName,
         mimeType: file.mimeType,
-        sizeBytes: file.buffer.length,
-        fileName: storedName,
-        url: `/uploads/${storedName}`,
+        sizeBytes: stored.sizeBytes,
+        fileName: stored.fileName,
+        url: stored.url,
         createdAt: new Date().toISOString()
       };
 
@@ -1261,10 +1234,11 @@ const server = createServer(async (req, res) => {
           return badRequest(res, 'No audio file found in request');
         }
 
-        const safeOriginal = sanitizeFilename(file.originalName || 'voice-note.wav');
-        const storedName = `${projectId}_voice_${Date.now()}_${safeOriginal}`;
-        const filePath = path.join(UPLOAD_DIR, storedName);
-        await writeFile(filePath, file.buffer);
+        const stored = await objectStore.put({
+          keyPrefix: `${projectId}_voice`,
+          originalName: file.originalName || 'voice-note.wav',
+          buffer: file.buffer
+        });
 
         const sttResult = await callOpenAITranscription({
           buffer: file.buffer,
@@ -1292,9 +1266,9 @@ const server = createServer(async (req, res) => {
             uploaderRole: currentUser.role,
             originalName: file.originalName,
             mimeType: file.mimeType,
-            sizeBytes: file.buffer.length,
-            fileName: storedName,
-            url: `/uploads/${storedName}`,
+            sizeBytes: stored.sizeBytes,
+            fileName: stored.fileName,
+            url: stored.url,
             transcript,
             sttMode,
             sttModel: sttResult.ok ? OPENAI_STT_MODEL : 'fallback',
@@ -1967,7 +1941,7 @@ const server = createServer(async (req, res) => {
       if (!canAccessProject(project, currentUser)) {
         return forbidden(res);
       }
-      return serveStaticFile(res, path.join(UPLOAD_DIR, safe));
+      return serveStaticFile(res, objectStore.resolvePath(safe));
     }
 
     if (method === 'GET' && pathname === '/') {

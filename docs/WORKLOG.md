@@ -61,3 +61,12 @@
   - Made cookie `Secure` behavior environment-aware
   - Added runnable security smoke test script (`scripts/security_smoke_test.mjs`)
 - Added end-to-end workflow smoke script (`scripts/workflow_smoke_test.mjs`) covering creator/editor core flow with auth and CSRF enabled.
+- Implemented Phase 3.4 persistence abstraction:
+  - Added `lib/state_store.mjs` with `sqlite` (default) and `json` backend support
+  - Added `lib/object_store.mjs` with local object-store adapter
+  - Refactored `server.mjs` persistence and uploads to use store interfaces
+  - Added backend flags in `.env.example`: `DATA_BACKEND`, `OBJECT_STORE_BACKEND`
+  - Extended runtime artifact ignores for SQLite state file (`data/app_state.db`)
+- Re-ran smoke coverage after migration:
+  - `npm run test:security` passed
+  - `npm run test:workflow` passed

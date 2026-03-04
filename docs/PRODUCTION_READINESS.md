@@ -26,8 +26,8 @@ Last Updated: 2026-03-04
 
 ## Critical Gaps Before Production
 1. Data and storage:
-- local JSON file (`data/db.json`)
-- local filesystem uploads (`uploads/`)
+- local state backends only (`sqlite`/`json`)
+- local filesystem uploads (`uploads/`) only
 2. AI and media pipeline:
 - no async worker queue
 - STT exists but is synchronous and not worker-backed
@@ -44,8 +44,8 @@ Last Updated: 2026-03-04
 
 ## Production Readiness Plan (Ordered)
 1. Platform foundation:
-- PostgreSQL + managed object storage
-- migration scripts
+- managed DB/object storage adapters wired to existing store interfaces
+- migration scripts and backfill validation
 2. Identity/security hardening:
 - upgrade auth to production-grade identity provider
 - secure cookie policy by environment + session rotation + revocation strategy

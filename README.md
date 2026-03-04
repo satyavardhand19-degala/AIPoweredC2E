@@ -1,6 +1,6 @@
 # Creator-Editor AI Workflow (MVP)
 
-Phase 3.2 workflow implementation with voice-note upload + STT integration.
+Phase 3.4 persistence abstraction with pluggable state/object stores.
 
 ## What is implemented
 - Project creation for creator-editor pairs
@@ -57,6 +57,8 @@ Copy `.env.example` to `.env` and set values as needed.
 - `OPENAI_MODEL` (optional): defaults to `gpt-4.1-mini`.
 - `OPENAI_STT_MODEL` (optional): defaults to `gpt-4o-mini-transcribe`.
 - `RATE_LIMIT_MAX` and `RATE_LIMIT_AUTH_MAX` tune in-memory API throttling.
+- `DATA_BACKEND` controls state persistence (`sqlite` default, `json` optional).
+- `OBJECT_STORE_BACKEND` controls upload persistence (`local` currently supported).
 - If no API key is present or provider call fails, endpoints automatically fall back to heuristic logic.
 
 ## Security smoke test
@@ -70,10 +72,11 @@ npm run test:workflow
 ```
 
 ## Storage
-- Data: `data/db.json`
-- Uploaded files: `uploads/`
+- State store: `sqlite` by default at `data/app_state.db` (auto-imports from `data/db.json` on first run)
+- Optional state backend: `json` at `data/db.json` via `DATA_BACKEND=json`
+- Object store: local filesystem at `uploads/` (via object-store adapter)
 
 ## Next phase
-- Add cloud object storage and database backend for deployment
-- Add production security hardening (rate limits, CSRF/session policy, audit logs)
+- Add managed DB/object-storage adapters behind the same interfaces
+- Add production security hardening (distributed rate limits, session policy, audit logs)
 - Add automated test coverage and CI pipeline

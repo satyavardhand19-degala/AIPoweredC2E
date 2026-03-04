@@ -29,6 +29,7 @@ Thumbs.db
 
 # Local runtime state
 data/db.json
+data/app_state.db
 uploads/*
 !uploads/.gitkeep
 !data/.gitkeep

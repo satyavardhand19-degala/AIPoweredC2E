@@ -3,8 +3,8 @@
 ## Stack
 - Frontend: Vanilla HTML/CSS/JS (mobile-first)
 - Backend: Node.js HTTP server (`server.mjs`)
-- DB: Local JSON file (`data/db.json`) for MVP velocity
-- File storage: Local filesystem (`uploads/`)
+- State store: pluggable backend (`sqlite` default at `data/app_state.db`, optional `json` at `data/db.json`)
+- Object store: pluggable backend (`local` filesystem at `uploads/`)
 - AI services:
   - Speech-to-text for voice notes
   - LLM for brief extraction, feedback summarization, version diff summary
@@ -28,6 +28,9 @@
     - editor uploads `v1`/`v2` and updates checklist item status
   - CSRF token enforcement on mutating API routes
   - In-memory request rate limiting (global API + auth login bucket)
+  - Persistence abstraction:
+    - `createStateStore(...)` with `sqlite` (default) and `json` backends
+    - `createObjectStore(...)` with local backend for uploaded files
   - Voice-note upload + transcript pipeline:
     - `POST/GET /api/projects/:id/voice-notes`
     - optional OpenAI STT (`/v1/audio/transcriptions`)
@@ -42,7 +45,7 @@
     - `npm run test:security`
     - `npm run test:workflow`
 - Pending:
-  - Cloud DB/object storage migration
+  - Managed DB/object storage adapter implementation
   - Security hardening (audit trail, stronger CSRF/session policy, distributed rate limiting)
 
 ## Core Entities

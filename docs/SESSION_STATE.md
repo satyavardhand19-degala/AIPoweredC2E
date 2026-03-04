@@ -3,11 +3,11 @@
 Last Updated: 2026-03-04
 
 ## Current Phase
-Phase 3.3: Security hardening + automated smoke coverage implemented.
+Phase 3.4: Persistence abstraction implemented (state/object stores with backend adapters).
 
 ## Immediate Next Task
-Phase 3.4 start point:
-1. Move persistence from local JSON/filesystem to managed DB + object storage.
+Phase 3.5 start point:
+1. Add managed DB/object storage adapters (PostgreSQL/S3 or equivalent) behind existing interfaces.
 2. Add audit logging and deploy-ready observability hooks.
 3. Expand test suite from smoke scripts to CI-grade integration/e2e cases.
 
@@ -54,10 +54,15 @@ Phase 3.4 start point:
 - Added runnable security smoke test script (`npm run test:security`)
 10. Smoke test coverage expanded:
 - Added end-to-end creator/editor workflow smoke test (`npm run test:workflow`)
+11. Phase 3.4 persistence abstraction completed:
+- Added `lib/state_store.mjs` with `sqlite` (default) and `json` backends
+- Added `lib/object_store.mjs` with local object-store adapter
+- Rewired `server.mjs` reads/writes/uploads to use adapter interfaces
+- Added SQLite state file ignore (`data/app_state.db`) and env flags for backend selection
 
 ## Next Build Phase
 Phase 3: Production-grade integrations.
-- Move persistence from local JSON to managed DB/object storage.
+- Replace local adapters with managed DB/object storage backends.
 - Add deployment/security/observability hardening for production.
 
 ## Production Snapshot
@@ -71,7 +76,7 @@ Ready today (demo quality):
 7. Basic authenticated collaboration with role-based restrictions.
 
 Not production-ready yet:
-1. Local JSON DB and local uploads (no managed persistence).
+1. Local SQLite/JSON state and local uploads (no managed persistence).
 2. No background jobs/queue for long-running AI or media tasks.
 3. No deployment baseline (CI/CD, secrets, backups, monitoring, rate limits).
 4. No CI-grade automated test suite (only local smoke scripts currently).
