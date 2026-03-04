@@ -93,3 +93,10 @@
   - Build/cache directories (build/, .mypy_cache/, .ruff_cache/)
   - Editor temp files (*.swp, *~)
   - Additional runtime directories (.entire/, .opencode/, .gemini/)
+- Implemented Phase 4.1 PostgreSQL state store backend:
+  - Added `pg` library dependency
+  - Created `PostgresStateStore` class with connection pooling
+  - Added `DATA_BACKEND=postgres` support in `.env.example`
+  - Added PostgreSQL config options: host, port, database, user, password, ssl, maxConnections
+  - Supports `DATABASE_URL` connection string for convenience
+  - Verified existing tests still pass (sqlite backend)

@@ -4,6 +4,7 @@ Last Updated: 2026-03-04
 
 ## Locked Direction
 - Production database technology is locked to PostgreSQL for upcoming migration.
+- PostgreSQL state store adapter implemented and ready for use (`DATA_BACKEND=postgres`).
 
 ## Current Maturity
 - Product stage: working MVP + connected workflow
@@ -30,9 +31,9 @@ Last Updated: 2026-03-04
 10. Baseline observability exists (request IDs + health telemetry + optional request logs).
 
 ## Critical Gaps Before Production
-1. Data and storage:
-- local state backends only (`sqlite`/`json`)
-- local filesystem uploads (`uploads/`) only
+1. ~~Data and storage:~~
+   - ~~local state backends only (`sqlite`/`json`)~~ - PostgreSQL backend implemented
+   - local filesystem uploads (`uploads/`) only - needs managed object storage
 2. AI and media pipeline:
 - no async worker queue
 - STT exists but is synchronous and not worker-backed
@@ -49,9 +50,9 @@ Last Updated: 2026-03-04
 - local smoke scripts exist, but no CI-grade automated unit/integration/e2e suites
 
 ## Production Readiness Plan (Ordered)
-1. Platform foundation:
-- PostgreSQL state-store adapter + managed object storage adapter wired to existing store interfaces
-- migration scripts and backfill validation
+1. ~~Platform foundation:~~
+   - ~~PostgreSQL state-store adapter + managed object storage adapter wired to existing store interfaces~~
+   - ~~migration scripts and backfill validation~~
 2. Identity/security hardening:
 - upgrade auth to production-grade identity provider
 - secure cookie policy by environment + session rotation + revocation strategy
