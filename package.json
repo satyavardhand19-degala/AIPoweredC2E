@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "node server.mjs",
     "start": "node server.mjs",
-    "test:security": "node scripts/security_smoke_test.mjs"
+    "test:security": "node scripts/security_smoke_test.mjs",
+    "test:workflow": "node scripts/workflow_smoke_test.mjs"
   }
 }

@@ -64,6 +64,11 @@ Copy `.env.example` to `.env` and set values as needed.
 npm run test:security
 ```
 
+## Workflow smoke test
+```bash
+npm run test:workflow
+```
+
 ## Storage
 - Data: `data/db.json`
 - Uploaded files: `uploads/`

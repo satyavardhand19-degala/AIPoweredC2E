@@ -3,13 +3,13 @@
 Last Updated: 2026-03-04
 
 ## Current Phase
-Phase 3.3: Security hardening baseline (CSRF + rate limiting + security test) implemented.
+Phase 3.3: Security hardening + automated smoke coverage implemented.
 
 ## Immediate Next Task
 Phase 3.4 start point:
 1. Move persistence from local JSON/filesystem to managed DB + object storage.
-2. Add broader automated tests for end-to-end creator/editor workflow.
-3. Add audit logging and deploy-ready observability hooks.
+2. Add audit logging and deploy-ready observability hooks.
+3. Expand test suite from smoke scripts to CI-grade integration/e2e cases.
 
 ## What Is Completed
 1. Problem statement read and decoded from local PDF.
@@ -52,6 +52,8 @@ Phase 3.4 start point:
 - In-memory API rate limiting (including dedicated auth-login bucket)
 - Session cookie `Secure` flag now environment-aware (`NODE_ENV=production`)
 - Added runnable security smoke test script (`npm run test:security`)
+10. Smoke test coverage expanded:
+- Added end-to-end creator/editor workflow smoke test (`npm run test:workflow`)
 
 ## Next Build Phase
 Phase 3: Production-grade integrations.
@@ -72,7 +74,7 @@ Not production-ready yet:
 1. Local JSON DB and local uploads (no managed persistence).
 2. No background jobs/queue for long-running AI or media tasks.
 3. No deployment baseline (CI/CD, secrets, backups, monitoring, rate limits).
-4. No full automated test suite.
+4. No CI-grade automated test suite (only local smoke scripts currently).
 5. Security hardening is partial (no distributed rate limiting, no audit logs, limited CSRF/session policy depth).
 
 ## Product Decisions Locked

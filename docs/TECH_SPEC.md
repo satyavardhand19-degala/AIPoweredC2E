@@ -38,6 +38,9 @@
     - revision checklist generation
     - version summary generation
   - Automatic heuristic fallback when `OPENAI_API_KEY` is not configured or provider output fails validation
+  - Executable smoke scripts:
+    - `npm run test:security`
+    - `npm run test:workflow`
 - Pending:
   - Cloud DB/object storage migration
   - Security hardening (audit trail, stronger CSRF/session policy, distributed rate limiting)

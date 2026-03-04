@@ -22,6 +22,7 @@ Last Updated: 2026-03-04
 5. Basic session auth and project-level authorization are implemented.
 6. Voice-note upload and baseline STT pipeline are implemented with fallback behavior.
 7. Baseline CSRF protection and in-memory API rate limiting are implemented.
+8. Local executable smoke tests exist for security and workflow paths.
 
 ## Critical Gaps Before Production
 1. Data and storage:
@@ -39,7 +40,7 @@ Last Updated: 2026-03-04
 - no error alerting
 - no backup/restore strategy
 5. Test coverage:
-- no automated unit/integration/e2e suites
+- local smoke scripts exist, but no CI-grade automated unit/integration/e2e suites
 
 ## Production Readiness Plan (Ordered)
 1. Platform foundation:
