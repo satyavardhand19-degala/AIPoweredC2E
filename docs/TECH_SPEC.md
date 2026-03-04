@@ -29,6 +29,11 @@
   - CSRF token enforcement on mutating API routes
   - In-memory request rate limiting (global API + auth login bucket)
   - Persisted audit trail for key mutating actions (auth/project/upload/AI/checklist)
+  - Observability baseline:
+    - per-response `X-Request-Id`
+    - in-memory request/response counters
+    - enriched `/api/health` diagnostics
+    - optional JSON request logs via `ENABLE_REQUEST_LOGS=1`
   - Persistence abstraction:
     - `createStateStore(...)` with `sqlite` (default) and `json` backends
     - `createObjectStore(...)` with local backend for uploaded files

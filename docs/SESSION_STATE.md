@@ -3,10 +3,10 @@
 Last Updated: 2026-03-04
 
 ## Current Phase
-Phase 3.5: Audit trail baseline implemented on top of persistence abstraction.
+Phase 3.6: Observability baseline implemented (request IDs + telemetry + health diagnostics).
 
 ## Immediate Next Task
-Phase 3.6 start point:
+Phase 3.7 start point:
 1. Add managed DB/object storage adapters (PostgreSQL/S3 or equivalent) behind existing interfaces.
 2. Add deploy-ready observability hooks (structured metrics, centralized logs, alerts).
 3. Expand test suite from smoke scripts to CI-grade integration/e2e cases.
@@ -64,6 +64,11 @@ Phase 3.6 start point:
 - Added mutation-side audit hooks for auth/project/upload/voice/brief/comment/checklist/AI summary actions
 - Added `GET /api/projects/:id/audit-logs` endpoint (project-access protected)
 - Re-ran smoke checks (`test:security`, `test:workflow`) successfully after audit integration
+13. Phase 3.6 observability baseline completed:
+- Added `X-Request-Id` response header on all requests
+- Added in-memory request telemetry counters (traffic, rate-limit hits, 5xx counts)
+- Enriched `/api/health` with uptime, backend info, and telemetry snapshot
+- Added optional structured request logging via `ENABLE_REQUEST_LOGS=1`
 
 ## Next Build Phase
 Phase 3: Production-grade integrations.

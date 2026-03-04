@@ -77,3 +77,11 @@
 - Re-ran smoke coverage after audit integration:
   - `npm run test:security` passed
   - `npm run test:workflow` passed
+- Implemented Phase 3.6 observability baseline:
+  - Added `X-Request-Id` response header emission
+  - Added in-memory request telemetry counters
+  - Enriched `/api/health` with uptime/backend/telemetry details
+  - Added optional JSON request logging (`ENABLE_REQUEST_LOGS=1`)
+- Re-ran smoke coverage after observability updates:
+  - `npm run test:security` passed
+  - `npm run test:workflow` passed

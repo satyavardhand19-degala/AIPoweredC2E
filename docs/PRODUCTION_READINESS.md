@@ -24,6 +24,7 @@ Last Updated: 2026-03-04
 7. Baseline CSRF protection and in-memory API rate limiting are implemented.
 8. Local executable smoke tests exist for security and workflow paths.
 9. Baseline persisted audit logs exist for key mutating actions.
+10. Baseline observability exists (request IDs + health telemetry + optional request logs).
 
 ## Critical Gaps Before Production
 1. Data and storage:
@@ -37,7 +38,8 @@ Last Updated: 2026-03-04
 - baseline CSRF/session hardening exists but needs stronger production policy
 - audit logs are local-only (no centralized sink/retention controls)
 4. Reliability/observability:
-- no structured logs/metrics/tracing
+- logs/metrics are local and in-memory only (not centralized)
+- no tracing
 - no error alerting
 - no backup/restore strategy
 5. Test coverage:

@@ -25,6 +25,10 @@ Phase 3.4 persistence abstraction with pluggable state/object stores.
 - CSRF protection for mutating API routes
 - Basic in-memory API rate limiting
 - Persisted audit logs for sensitive mutating actions
+- Observability baseline:
+  - `X-Request-Id` on responses
+  - lightweight in-memory request telemetry
+  - enriched `/api/health` payload (uptime, storage backend, counters)
 
 ## API surface (MVP)
 - `GET /api/auth/me`
@@ -61,6 +65,7 @@ Copy `.env.example` to `.env` and set values as needed.
 - `RATE_LIMIT_MAX` and `RATE_LIMIT_AUTH_MAX` tune in-memory API throttling.
 - `DATA_BACKEND` controls state persistence (`sqlite` default, `json` optional).
 - `OBJECT_STORE_BACKEND` controls upload persistence (`local` currently supported).
+- `ENABLE_REQUEST_LOGS=1` enables JSON request logs to stdout.
 - If no API key is present or provider call fails, endpoints automatically fall back to heuristic logic.
 
 ## Security smoke test

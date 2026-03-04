@@ -28,7 +28,16 @@ const CSRF_HEADER_NAME = 'x-csrf-token';
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX || 240);
 const RATE_LIMIT_AUTH_MAX = Number(process.env.RATE_LIMIT_AUTH_MAX || 30);
+const ENABLE_REQUEST_LOGS = process.env.ENABLE_REQUEST_LOGS === '1';
 const rateLimitStore = new Map();
+const telemetry = {
+  startedAtMs: Date.now(),
+  requestsTotal: 0,
+  apiRequestsTotal: 0,
+  responsesByStatus: {},
+  apiRateLimitedTotal: 0,
+  errors5xxTotal: 0
+};
 const stateStore = createStateStore({
   backend: DATA_BACKEND,
   jsonFilePath: DATA_JSON_FILE,
@@ -267,6 +276,32 @@ function shouldEnforceCsrf(method, pathname) {
     return false;
   }
   return true;
+}
+
+function recordResponseTelemetry({ method, pathname, statusCode, durationMs }) {
+  telemetry.requestsTotal += 1;
+  if (pathname.startsWith('/api/')) {
+    telemetry.apiRequestsTotal += 1;
+  }
+  const statusKey = String(statusCode || 0);
+  telemetry.responsesByStatus[statusKey] = (telemetry.responsesByStatus[statusKey] || 0) + 1;
+  if (pathname.startsWith('/api/') && Number(statusCode) === 429) {
+    telemetry.apiRateLimitedTotal += 1;
+  }
+  if (Number(statusCode) >= 500) {
+    telemetry.errors5xxTotal += 1;
+  }
+  if (ENABLE_REQUEST_LOGS) {
+    console.log(
+      JSON.stringify({
+        at: new Date().toISOString(),
+        method,
+        pathname,
+        statusCode,
+        durationMs
+      })
+    );
+  }
 }
 
 function canAccessProject(project, user) {
@@ -919,6 +954,22 @@ const server = createServer(async (req, res) => {
     const method = req.method || 'GET';
     const url = new URL(req.url || '/', `http://${req.headers.host}`);
     const pathname = url.pathname;
+    const requestStartedAt = Date.now();
+    let responseStatusCode = 200;
+    const originalWriteHead = res.writeHead.bind(res);
+    res.writeHead = (statusCode, ...args) => {
+      responseStatusCode = Number(statusCode) || 200;
+      return originalWriteHead(statusCode, ...args);
+    };
+    res.setHeader('X-Request-Id', randomUUID());
+    res.on('finish', () => {
+      recordResponseTelemetry({
+        method,
+        pathname,
+        statusCode: responseStatusCode,
+        durationMs: Date.now() - requestStartedAt
+      });
+    });
 
     if (pathname.startsWith('/api/')) {
       const limit = applyRateLimit(req, pathname);
@@ -938,7 +989,21 @@ const server = createServer(async (req, res) => {
     }
 
     if (method === 'GET' && pathname === '/api/health') {
-      return sendJson(res, 200, { ok: true, time: new Date().toISOString() });
+      return sendJson(res, 200, {
+        ok: true,
+        time: new Date().toISOString(),
+        uptimeSec: Math.floor((Date.now() - telemetry.startedAtMs) / 1000),
+        storage: {
+          stateBackend: DATA_BACKEND,
+          objectStoreBackend: OBJECT_STORE_BACKEND
+        },
+        telemetry: {
+          requestsTotal: telemetry.requestsTotal,
+          apiRequestsTotal: telemetry.apiRequestsTotal,
+          apiRateLimitedTotal: telemetry.apiRateLimitedTotal,
+          errors5xxTotal: telemetry.errors5xxTotal
+        }
+      });
     }
 
     if (shouldEnforceCsrf(method, pathname)) {
