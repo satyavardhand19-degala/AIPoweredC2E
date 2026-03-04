@@ -35,6 +35,13 @@ npm run dev
 
 Then open `http://localhost:3000`.
 
+## Environment
+Copy `.env.example` to `.env` and set values as needed.
+
+- `OPENAI_API_KEY` (optional): enables real model generation for brief/checklist/summary endpoints.
+- `OPENAI_MODEL` (optional): defaults to `gpt-4.1-mini`.
+- If no API key is present or provider call fails, endpoints automatically fall back to heuristic logic.
+
 ## Storage
 - Data: `data/db.json`
 - Uploaded files: `uploads/`

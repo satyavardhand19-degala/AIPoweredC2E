@@ -30,3 +30,8 @@
 - Fixed backend data consistency bug:
   - Introduced serialized DB mutation queue to prevent concurrent write overwrite.
 - Validated APIs end-to-end with live local server smoke tests, including concurrent generation calls.
+- Added optional real AI provider integration:
+  - Added OpenAI Responses API calls for brief/checklist/summary generation
+  - Added strict JSON-schema response expectations and normalization
+  - Added automatic fallback to heuristic generation when provider is unavailable
+- Added `.env.example` with `OPENAI_API_KEY` and `OPENAI_MODEL` configuration.

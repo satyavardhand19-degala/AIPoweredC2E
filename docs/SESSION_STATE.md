@@ -3,7 +3,7 @@
 Last Updated: 2026-03-04
 
 ## Current Phase
-Phase 2: End-to-end workflow APIs + UI completed with persisted state.
+Phase 2.1: AI provider integration (optional) added with safe fallback.
 
 ## What Is Completed
 1. Problem statement read and decoded from local PDF.
@@ -25,10 +25,11 @@ Phase 2: End-to-end workflow APIs + UI completed with persisted state.
 - V1 -> V2 summary endpoint and UI control
 - Project context endpoint for full state hydration
 - Concurrent-write safety fix via serialized DB mutation queue
+- OpenAI integration added to brief/checklist/summary generation endpoints
+- Schema-constrained model output validation + deterministic fallback path
 
 ## Next Build Phase
 Phase 3: Production-grade integrations.
-- Replace heuristic AI placeholders with real model provider calls.
 - Add voice file handling + STT pipeline.
 - Add auth and project-level access controls.
 - Move persistence from local JSON to managed DB/object storage.
