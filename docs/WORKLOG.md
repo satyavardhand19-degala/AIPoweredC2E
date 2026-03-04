@@ -37,3 +37,11 @@
 - Added `.env.example` with `OPENAI_API_KEY` and `OPENAI_MODEL` configuration.
 - Added explicit production-readiness snapshot and rollout sequence in `docs/PRODUCTION_READINESS.md`.
 - Updated resume flow so new sessions always load production gap context first.
+- Implemented Phase 3.1 auth/access foundation:
+  - Added session auth endpoints (`/api/auth/login`, `/api/auth/me`, `/api/auth/logout`)
+  - Added persisted `users` and `sessions` records in local DB
+  - Added project-level authorization checks on project routes
+  - Restricted uploaded media access to authorized project members
+  - Enforced role-based actions (creator creates project/uploads raw, editor uploads v1/v2 and updates checklist)
+  - Updated frontend with login/logout and session-aware UX
+- Validated auth/access behavior end-to-end with role-specific API smoke tests.

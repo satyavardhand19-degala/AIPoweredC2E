@@ -9,10 +9,32 @@
   <body>
     <main class="app-shell">
       <header class="hero">
-        <p class="eyebrow">MVP Phase 2</p>
+        <p class="eyebrow">MVP Phase 3 (Auth)</p>
         <h1>Creator-Editor Workflow Console</h1>
-        <p>End-to-end flow: brief input -> AI brief -> upload versions -> feedback -> AI checklist -> status -> version summary.</p>
+        <p>End-to-end flow with role-aware access: login -> brief -> uploads -> feedback -> checklist -> summary.</p>
       </header>
+
+      <section class="panel">
+        <h2>Session</h2>
+        <form id="auth-form" class="stack">
+          <label>
+            Name
+            <input type="text" name="name" required placeholder="Riya or Arjun" />
+          </label>
+          <label>
+            Role
+            <select name="role" required>
+              <option value="creator">creator</option>
+              <option value="editor">editor</option>
+            </select>
+          </label>
+          <button type="submit">Login</button>
+        </form>
+        <div class="inline-row">
+          <p id="auth-meta" class="meta">Not logged in</p>
+          <button id="logout-button" type="button">Logout</button>
+        </div>
+      </section>
 
       <section class="panel">
         <h2>Create Project</h2>
@@ -75,13 +97,6 @@
             </select>
           </label>
           <label>
-            Created By
-            <select name="createdBy" required>
-              <option value="creator">creator</option>
-              <option value="editor">editor</option>
-            </select>
-          </label>
-          <label>
             Content
             <textarea name="content" rows="3" required placeholder="Example: hook punchy, yellow captions, under 30s, end with comment CTA"></textarea>
           </label>
@@ -110,13 +125,6 @@
             <select name="source" required>
               <option value="text">text</option>
               <option value="voice">voice</option>
-            </select>
-          </label>
-          <label>
-            Author Role
-            <select name="authorRole" required>
-              <option value="creator">creator</option>
-              <option value="editor">editor</option>
             </select>
           </label>
           <label>

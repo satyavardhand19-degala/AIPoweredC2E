@@ -1,6 +1,6 @@
 # Creator-Editor AI Workflow (MVP)
 
-Phase 2 workflow implementation for the hackathon problem statement.
+Phase 3.1 workflow implementation with authentication and access control.
 
 ## What is implemented
 - Project creation for creator-editor pairs
@@ -13,8 +13,16 @@ Phase 2 workflow implementation for the hackathon problem statement.
 - Checklist status updates (`todo`, `in_progress`, `done`)
 - V1 -> V2 summary endpoint with publish readiness score
 - Project context endpoint for complete workflow state
+- Session-based login/logout (`creator` or `editor`)
+- Project-level access control on API + uploaded media
+- Role restrictions:
+  - creator: create projects, upload `raw`
+  - editor: upload `v1`/`v2`, update checklist status
 
 ## API surface (MVP)
+- `GET /api/auth/me`
+- `POST /api/auth/login`
+- `POST /api/auth/logout`
 - `GET /api/projects`
 - `POST /api/projects`
 - `GET /api/projects/:id/context`
@@ -48,5 +56,5 @@ Copy `.env.example` to `.env` and set values as needed.
 
 ## Next phase
 - Replace heuristic AI placeholder logic with real LLM/STT provider calls
-- Add role-based authentication and project-level access control
+- Add voice-note file upload + speech-to-text pipeline
 - Add cloud object storage and database backend for deployment

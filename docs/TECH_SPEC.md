@@ -21,6 +21,11 @@
   - V1 -> V2 summary endpoint with readiness scoring
   - Project context endpoint for full state hydration
   - Serialized DB mutation queue to avoid lost updates on concurrent writes
+  - Session auth endpoints (`/api/auth/login`, `/api/auth/me`, `/api/auth/logout`)
+  - Project-level access control enforcement on API and uploaded media routes
+  - Role-based action constraints:
+    - creator creates projects and uploads `raw`
+    - editor uploads `v1`/`v2` and updates checklist item status
   - Optional OpenAI provider integration (`/v1/responses`) for:
     - structured brief generation
     - revision checklist generation
@@ -28,8 +33,8 @@
   - Automatic heuristic fallback when `OPENAI_API_KEY` is not configured or provider output fails validation
 - Pending:
   - Voice-file upload -> STT pipeline
-  - Auth and access control
   - Cloud DB/object storage migration
+  - Security hardening (secure cookies in production, CSRF/rate limits, audit trail)
 
 ## Core Entities
 - User (creator/editor)

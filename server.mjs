@@ -15,9 +15,13 @@ const UPLOAD_DIR = path.join(__dirname, 'uploads');
 const DB_FILE = path.join(DATA_DIR, 'db.json');
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
+const SESSION_COOKIE_NAME = 'ce_session';
+const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
 
 function emptyDb() {
   return {
+    users: [],
+    sessions: [],
     projects: [],
     assets: [],
     briefInputs: [],
@@ -33,6 +37,8 @@ function normalizeDb(db) {
   return {
     ...base,
     ...db,
+    users: Array.isArray(db.users) ? db.users : [],
+    sessions: Array.isArray(db.sessions) ? db.sessions : [],
     projects: Array.isArray(db.projects) ? db.projects : [],
     assets: Array.isArray(db.assets) ? db.assets : [],
     briefInputs: Array.isArray(db.briefInputs) ? db.briefInputs : [],
@@ -79,11 +85,12 @@ async function mutateDb(mutator) {
   return result;
 }
 
-function sendJson(res, status, payload) {
+function sendJson(res, status, payload, headers = {}) {
   const body = JSON.stringify(payload);
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
-    'Content-Length': Buffer.byteLength(body)
+    'Content-Length': Buffer.byteLength(body),
+    ...headers
   });
   res.end(body);
 }
@@ -96,12 +103,117 @@ function badRequest(res, message) {
   sendJson(res, 400, { error: message });
 }
 
+function unauthorized(res, message = 'Authentication required') {
+  sendJson(res, 401, { error: message });
+}
+
+function forbidden(res, message = 'Forbidden') {
+  sendJson(res, 403, { error: message });
+}
+
 function sanitizeFilename(name) {
   return name.replace(/[^a-zA-Z0-9._-]/g, '_');
 }
 
 function safeLower(value) {
   return String(value || '').trim().toLowerCase();
+}
+
+function normalizeName(value) {
+  return String(value || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+}
+
+function parseCookies(req) {
+  const header = req.headers.cookie || '';
+  const out = {};
+  for (const part of header.split(';')) {
+    const trimmed = part.trim();
+    if (!trimmed) {
+      continue;
+    }
+    const idx = trimmed.indexOf('=');
+    if (idx <= 0) {
+      continue;
+    }
+    const key = trimmed.slice(0, idx).trim();
+    const value = trimmed.slice(idx + 1).trim();
+    out[key] = decodeURIComponent(value);
+  }
+  return out;
+}
+
+function buildCookie(name, value, options = {}) {
+  const chunks = [`${name}=${encodeURIComponent(value)}`];
+  chunks.push(`Path=${options.path || '/'}`);
+  if (typeof options.maxAge === 'number') {
+    chunks.push(`Max-Age=${Math.max(0, Math.floor(options.maxAge))}`);
+  }
+  if (options.httpOnly !== false) {
+    chunks.push('HttpOnly');
+  }
+  if (options.sameSite) {
+    chunks.push(`SameSite=${options.sameSite}`);
+  } else {
+    chunks.push('SameSite=Lax');
+  }
+  if (options.secure) {
+    chunks.push('Secure');
+  }
+  return chunks.join('; ');
+}
+
+function findUserByNameAndRole(db, name, role) {
+  const nameKey = normalizeName(name);
+  const roleKey = safeLower(role);
+  return db.users.find((user) => normalizeName(user.name) === nameKey && safeLower(user.role) === roleKey);
+}
+
+function getSessionToken(req) {
+  const cookies = parseCookies(req);
+  return cookies[SESSION_COOKIE_NAME] || '';
+}
+
+function getCurrentUserFromDb(req, db) {
+  const token = getSessionToken(req);
+  if (!token) {
+    return null;
+  }
+  const now = Date.now();
+  const session = db.sessions.find((entry) => entry.token === token && Date.parse(entry.expiresAt) > now);
+  if (!session) {
+    return null;
+  }
+  const user = db.users.find((entry) => entry.id === session.userId);
+  if (!user) {
+    return null;
+  }
+  return {
+    id: user.id,
+    name: user.name,
+    role: user.role
+  };
+}
+
+function canAccessProject(project, user) {
+  if (!project || !user) {
+    return false;
+  }
+  if (project.creatorUserId && project.creatorUserId === user.id) {
+    return true;
+  }
+  if (project.editorUserId && project.editorUserId === user.id) {
+    return true;
+  }
+  const userName = normalizeName(user.name);
+  return userName === normalizeName(project.creatorName) || userName === normalizeName(project.editorName);
+}
+
+function extractProjectIdFromAssetFileName(fileName) {
+  const match = String(fileName || '').match(/^([a-f0-9-]{36})_/i);
+  return match ? match[1] : null;
 }
 
 function parseDurationHint(text) {
@@ -652,28 +764,142 @@ const server = createServer(async (req, res) => {
       return sendJson(res, 200, { ok: true, time: new Date().toISOString() });
     }
 
+    if (method === 'GET' && pathname === '/api/auth/me') {
+      const db = await readDb();
+      const user = getCurrentUserFromDb(req, db);
+      return sendJson(res, 200, { user });
+    }
+
+    if (method === 'POST' && pathname === '/api/auth/login') {
+      const body = await parseJsonBody(req);
+      const name = String(body.name || '').trim();
+      const role = safeLower(body.role);
+
+      if (!name) {
+        return badRequest(res, 'name is required');
+      }
+      if (!['creator', 'editor'].includes(role)) {
+        return badRequest(res, 'role must be creator or editor');
+      }
+
+      const result = await mutateDb((db) => {
+        let user = findUserByNameAndRole(db, name, role);
+        if (!user) {
+          user = {
+            id: randomUUID(),
+            name,
+            role,
+            createdAt: new Date().toISOString()
+          };
+          db.users.push(user);
+        }
+
+        const now = new Date();
+        const nowIso = now.toISOString();
+        const expiresAt = new Date(now.getTime() + SESSION_TTL_SECONDS * 1000).toISOString();
+        const token = randomUUID().replace(/-/g, '') + randomUUID().replace(/-/g, '');
+
+        db.sessions = db.sessions.filter((session) => Date.parse(session.expiresAt) > Date.now());
+        db.sessions.push({
+          id: randomUUID(),
+          token,
+          userId: user.id,
+          createdAt: nowIso,
+          expiresAt
+        });
+
+        return {
+          user: { id: user.id, name: user.name, role: user.role },
+          token
+        };
+      });
+
+      const cookie = buildCookie(SESSION_COOKIE_NAME, result.token, {
+        maxAge: SESSION_TTL_SECONDS,
+        path: '/',
+        httpOnly: true,
+        sameSite: 'Lax',
+        secure: false
+      });
+
+      return sendJson(
+        res,
+        200,
+        {
+          user: result.user
+        },
+        {
+          'Set-Cookie': cookie
+        }
+      );
+    }
+
+    if (method === 'POST' && pathname === '/api/auth/logout') {
+      const token = getSessionToken(req);
+      if (token) {
+        await mutateDb((db) => {
+          db.sessions = db.sessions.filter((session) => session.token !== token);
+        });
+      }
+
+      const clearCookie = buildCookie(SESSION_COOKIE_NAME, '', {
+        maxAge: 0,
+        path: '/',
+        httpOnly: true,
+        sameSite: 'Lax',
+        secure: false
+      });
+      return sendJson(
+        res,
+        200,
+        { ok: true },
+        {
+          'Set-Cookie': clearCookie
+        }
+      );
+    }
+
     if (method === 'GET' && pathname === '/api/projects') {
       const db = await readDb();
-      const projects = db.projects.map((project) => projectSummary(project, db));
+      const currentUser = getCurrentUserFromDb(req, db);
+      if (!currentUser) {
+        return unauthorized(res);
+      }
+      const projects = db.projects.filter((project) => canAccessProject(project, currentUser)).map((project) => projectSummary(project, db));
       return sendJson(res, 200, { projects });
     }
 
     if (method === 'POST' && pathname === '/api/projects') {
+      const authDb = await readDb();
+      const currentUser = getCurrentUserFromDb(req, authDb);
+      if (!currentUser) {
+        return unauthorized(res);
+      }
+      if (safeLower(currentUser.role) !== 'creator') {
+        return forbidden(res, 'Only creator users can create projects');
+      }
+
       const body = await parseJsonBody(req);
       const title = String(body.title || '').trim();
-      const creatorName = String(body.creatorName || '').trim();
+      const creatorName = String(body.creatorName || '').trim() || currentUser.name;
       const editorName = String(body.editorName || '').trim();
 
       if (!title || !creatorName || !editorName) {
         return badRequest(res, 'title, creatorName, and editorName are required');
       }
+      if (normalizeName(creatorName) !== normalizeName(currentUser.name)) {
+        return badRequest(res, 'creatorName must match logged-in creator');
+      }
 
       const created = await mutateDb((db) => {
+        const editorUser = findUserByNameAndRole(db, editorName, 'editor');
         const project = {
           id: randomUUID(),
           title,
-          creatorName,
+          creatorName: currentUser.name,
           editorName,
+          creatorUserId: currentUser.id,
+          editorUserId: editorUser ? editorUser.id : null,
           status: 'draft',
           createdAt: new Date().toISOString()
         };
@@ -687,9 +913,16 @@ const server = createServer(async (req, res) => {
     if (method === 'GET' && projectContextMatch) {
       const projectId = projectContextMatch[1];
       const db = await readDb();
+      const currentUser = getCurrentUserFromDb(req, db);
+      if (!currentUser) {
+        return unauthorized(res);
+      }
       const project = ensureProject(db, projectId);
       if (!project) {
         return notFound(res);
+      }
+      if (!canAccessProject(project, currentUser)) {
+        return forbidden(res);
       }
 
       const assets = db.assets
@@ -726,6 +959,19 @@ const server = createServer(async (req, res) => {
     const projectUploadMatch = pathname.match(/^\/api\/projects\/([a-f0-9-]+)\/upload$/i);
     if (method === 'POST' && projectUploadMatch) {
       const projectId = projectUploadMatch[1];
+      const authDb = await readDb();
+      const currentUser = getCurrentUserFromDb(req, authDb);
+      if (!currentUser) {
+        return unauthorized(res);
+      }
+      const authProject = ensureProject(authDb, projectId);
+      if (!authProject) {
+        return notFound(res);
+      }
+      if (!canAccessProject(authProject, currentUser)) {
+        return forbidden(res);
+      }
+
       const contentType = req.headers['content-type'] || '';
       if (!contentType.startsWith('multipart/form-data')) {
         return badRequest(res, 'Expected multipart/form-data');
@@ -739,6 +985,12 @@ const server = createServer(async (req, res) => {
       }
       if (!['raw', 'v1', 'v2'].includes(versionLabel)) {
         return badRequest(res, 'versionLabel must be one of raw, v1, v2');
+      }
+      if (versionLabel === 'raw' && safeLower(currentUser.role) !== 'creator') {
+        return forbidden(res, 'Only creator can upload raw version');
+      }
+      if ((versionLabel === 'v1' || versionLabel === 'v2') && safeLower(currentUser.role) !== 'editor') {
+        return forbidden(res, 'Only editor can upload v1/v2 versions');
       }
 
       const db = await readDb();
@@ -784,9 +1036,16 @@ const server = createServer(async (req, res) => {
     if (briefInputMatch) {
       const projectId = briefInputMatch[1];
       const db = await readDb();
+      const currentUser = getCurrentUserFromDb(req, db);
+      if (!currentUser) {
+        return unauthorized(res);
+      }
       const project = ensureProject(db, projectId);
       if (!project) {
         return notFound(res);
+      }
+      if (!canAccessProject(project, currentUser)) {
+        return forbidden(res);
       }
 
       if (method === 'GET') {
@@ -800,16 +1059,13 @@ const server = createServer(async (req, res) => {
         const body = await parseJsonBody(req);
         const inputType = safeLower(body.inputType);
         const content = String(body.content || '').trim();
-        const createdBy = safeLower(body.createdBy || 'creator');
+        const createdBy = safeLower(currentUser.role);
 
         if (!['text', 'voice', 'url'].includes(inputType)) {
           return badRequest(res, 'inputType must be one of text, voice, url');
         }
         if (!content) {
           return badRequest(res, 'content is required');
-        }
-        if (!['creator', 'editor'].includes(createdBy)) {
-          return badRequest(res, 'createdBy must be creator or editor');
         }
 
         const created = await mutateDb((latestDb) => {
@@ -844,9 +1100,16 @@ const server = createServer(async (req, res) => {
       const body = await parseJsonBody(req);
       const inlineText = String(body.text || '').trim();
       const db = await readDb();
+      const currentUser = getCurrentUserFromDb(req, db);
+      if (!currentUser) {
+        return unauthorized(res);
+      }
       const project = ensureProject(db, projectId);
       if (!project) {
         return notFound(res);
+      }
+      if (!canAccessProject(project, currentUser)) {
+        return forbidden(res);
       }
 
       const projectInputs = db.briefInputs
@@ -937,9 +1200,16 @@ const server = createServer(async (req, res) => {
     if (method === 'GET' && latestBriefMatch) {
       const projectId = latestBriefMatch[1];
       const db = await readDb();
+      const currentUser = getCurrentUserFromDb(req, db);
+      if (!currentUser) {
+        return unauthorized(res);
+      }
       const project = ensureProject(db, projectId);
       if (!project) {
         return notFound(res);
+      }
+      if (!canAccessProject(project, currentUser)) {
+        return forbidden(res);
       }
 
       const brief = db.briefs
@@ -953,9 +1223,16 @@ const server = createServer(async (req, res) => {
     if (commentsMatch) {
       const projectId = commentsMatch[1];
       const db = await readDb();
+      const currentUser = getCurrentUserFromDb(req, db);
+      if (!currentUser) {
+        return unauthorized(res);
+      }
       const project = ensureProject(db, projectId);
       if (!project) {
         return notFound(res);
+      }
+      if (!canAccessProject(project, currentUser)) {
+        return forbidden(res);
       }
 
       if (method === 'GET') {
@@ -968,16 +1245,13 @@ const server = createServer(async (req, res) => {
       if (method === 'POST') {
         const body = await parseJsonBody(req);
         const text = String(body.text || '').trim();
-        const authorRole = safeLower(body.authorRole || 'creator');
+        const authorRole = safeLower(currentUser.role);
         const source = safeLower(body.source || 'text');
         const timestampSec = Number(body.timestampSec);
         const versionLabel = safeLower(body.versionLabel || 'v1');
 
         if (!text) {
           return badRequest(res, 'text is required');
-        }
-        if (!['creator', 'editor'].includes(authorRole)) {
-          return badRequest(res, 'authorRole must be creator or editor');
         }
         if (!['text', 'voice'].includes(source)) {
           return badRequest(res, 'source must be text or voice');
@@ -1024,9 +1298,16 @@ const server = createServer(async (req, res) => {
       const body = await parseJsonBody(req);
       const externalFeedback = Array.isArray(body.feedback) ? body.feedback : [];
       const db = await readDb();
+      const currentUser = getCurrentUserFromDb(req, db);
+      if (!currentUser) {
+        return unauthorized(res);
+      }
       const project = ensureProject(db, projectId);
       if (!project) {
         return notFound(res);
+      }
+      if (!canAccessProject(project, currentUser)) {
+        return forbidden(res);
       }
 
       const commentsFromDb = db.comments.filter((item) => item.projectId === projectId);
@@ -1154,9 +1435,16 @@ const server = createServer(async (req, res) => {
     if (method === 'GET' && checklistListMatch) {
       const projectId = checklistListMatch[1];
       const db = await readDb();
+      const currentUser = getCurrentUserFromDb(req, db);
+      if (!currentUser) {
+        return unauthorized(res);
+      }
       const project = ensureProject(db, projectId);
       if (!project) {
         return notFound(res);
+      }
+      if (!canAccessProject(project, currentUser)) {
+        return forbidden(res);
       }
 
       const items = db.checklistItems
@@ -1176,9 +1464,29 @@ const server = createServer(async (req, res) => {
       const itemId = checklistUpdateMatch[1];
       const body = await parseJsonBody(req);
       const status = safeLower(body.status);
+      const authDb = await readDb();
+      const currentUser = getCurrentUserFromDb(req, authDb);
+      if (!currentUser) {
+        return unauthorized(res);
+      }
 
       if (!['todo', 'in_progress', 'done'].includes(status)) {
         return badRequest(res, 'status must be todo, in_progress, or done');
+      }
+      if (safeLower(currentUser.role) !== 'editor') {
+        return forbidden(res, 'Only editor can update checklist item status');
+      }
+
+      const authItem = authDb.checklistItems.find((entry) => entry.id === itemId);
+      if (!authItem) {
+        return notFound(res);
+      }
+      const authProject = ensureProject(authDb, authItem.projectId);
+      if (!authProject) {
+        return notFound(res);
+      }
+      if (!canAccessProject(authProject, currentUser)) {
+        return forbidden(res);
       }
 
       const updated = await mutateDb((db) => {
@@ -1202,9 +1510,16 @@ const server = createServer(async (req, res) => {
     if (method === 'POST' && versionSummaryMatch) {
       const projectId = versionSummaryMatch[1];
       const db = await readDb();
+      const currentUser = getCurrentUserFromDb(req, db);
+      if (!currentUser) {
+        return unauthorized(res);
+      }
       const project = ensureProject(db, projectId);
       if (!project) {
         return notFound(res);
+      }
+      if (!canAccessProject(project, currentUser)) {
+        return forbidden(res);
       }
 
       const assets = db.assets.filter((asset) => asset.projectId === projectId);
@@ -1304,6 +1619,22 @@ const server = createServer(async (req, res) => {
     if (method === 'GET' && pathname.startsWith('/uploads/')) {
       const rel = pathname.replace('/uploads/', '');
       const safe = path.basename(rel);
+      const db = await readDb();
+      const currentUser = getCurrentUserFromDb(req, db);
+      if (!currentUser) {
+        return unauthorized(res);
+      }
+      const projectId = extractProjectIdFromAssetFileName(safe);
+      if (!projectId) {
+        return forbidden(res, 'Invalid asset reference');
+      }
+      const project = ensureProject(db, projectId);
+      if (!project) {
+        return notFound(res);
+      }
+      if (!canAccessProject(project, currentUser)) {
+        return forbidden(res);
+      }
       return serveStaticFile(res, path.join(UPLOAD_DIR, safe));
     }
 

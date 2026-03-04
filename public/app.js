@@ -1,3 +1,7 @@
+const authForm = document.getElementById('auth-form');
+const logoutButton = document.getElementById('logout-button');
+const authMeta = document.getElementById('auth-meta');
+
 const projectForm = document.getElementById('project-form');
 const uploadForm = document.getElementById('upload-form');
 const briefInputForm = document.getElementById('brief-input-form');
@@ -18,6 +22,7 @@ const checklistButton = document.getElementById('generate-checklist');
 const summaryButton = document.getElementById('generate-summary');
 
 let state = {
+  user: null,
   projects: [],
   activeProjectId: null,
   context: null
@@ -51,6 +56,98 @@ function currentProject() {
   return state.projects.find((project) => project.id === state.activeProjectId) || null;
 }
 
+async function api(path, options = {}) {
+  const response = await fetch(path, {
+    ...options,
+    headers: {
+      ...(options.headers || {})
+    }
+  });
+
+  let data = null;
+  try {
+    data = await response.json();
+  } catch {
+    data = null;
+  }
+
+  return {
+    ok: response.ok,
+    status: response.status,
+    data
+  };
+}
+
+function handleUnauthorized() {
+  state.user = null;
+  state.projects = [];
+  state.activeProjectId = null;
+  state.context = null;
+  renderAuth();
+  renderProjectOptions();
+  renderProjects();
+  renderChecklist();
+  renderContextDebug();
+}
+
+function applyRoleDefaults() {
+  const creatorField = projectForm.querySelector('input[name="creatorName"]');
+  if (!(creatorField instanceof HTMLInputElement)) {
+    return;
+  }
+
+  if (!state.user) {
+    creatorField.readOnly = false;
+    return;
+  }
+
+  if (state.user.role === 'creator') {
+    creatorField.value = state.user.name;
+    creatorField.readOnly = true;
+  } else {
+    creatorField.readOnly = false;
+  }
+}
+
+function setControlsEnabled(enabled) {
+  const guardForms = [projectForm, uploadForm, briefInputForm, feedbackForm];
+  for (const form of guardForms) {
+    const controls = form.querySelectorAll('input, select, textarea, button');
+    controls.forEach((el) => {
+      if (!(el instanceof HTMLInputElement || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement || el instanceof HTMLButtonElement)) {
+        return;
+      }
+      el.disabled = !enabled;
+    });
+  }
+
+  projectSelect.disabled = !enabled;
+  briefButton.disabled = !enabled;
+  checklistButton.disabled = !enabled;
+  summaryButton.disabled = !enabled;
+
+  const createButton = projectForm.querySelector('button[type="submit"]');
+  if (createButton instanceof HTMLButtonElement && state.user?.role !== 'creator') {
+    createButton.disabled = true;
+    createButton.title = 'Only creator can create a project';
+  }
+}
+
+function renderAuth() {
+  if (!state.user) {
+    authMeta.textContent = 'Not logged in';
+    logoutButton.disabled = true;
+    setControlsEnabled(false);
+    applyRoleDefaults();
+    return;
+  }
+
+  authMeta.textContent = `Logged in as ${state.user.name} (${state.user.role})`;
+  logoutButton.disabled = false;
+  setControlsEnabled(true);
+  applyRoleDefaults();
+}
+
 function renderProjectOptions() {
   const options = state.projects
     .map((project) => {
@@ -79,8 +176,13 @@ function renderProjectOptions() {
 }
 
 function renderProjects() {
+  if (!state.user) {
+    projectsEl.innerHTML = '<p class="meta">Login to view your projects.</p>';
+    return;
+  }
+
   if (!state.projects.length) {
-    projectsEl.innerHTML = '<p class="meta">No projects yet. Create one above.</p>';
+    projectsEl.innerHTML = '<p class="meta">No projects available for your account.</p>';
     return;
   }
 
@@ -119,6 +221,11 @@ function renderProjects() {
 function renderChecklist() {
   const items = state.context?.checklistItems || [];
 
+  if (!state.user) {
+    checklistEl.innerHTML = '<p class="meta">Login to view checklist.</p>';
+    return;
+  }
+
   if (!items.length) {
     checklistEl.innerHTML = '<p class="meta">No checklist items yet. Add feedback and generate checklist.</p>';
     return;
@@ -126,6 +233,7 @@ function renderChecklist() {
 
   checklistEl.innerHTML = items
     .map((item) => {
+      const disableActions = state.user?.role !== 'editor' ? 'disabled' : '';
       return `
         <div class="check-item ${item.status === 'done' ? 'is-done' : ''}">
           <div>
@@ -134,9 +242,9 @@ function renderChecklist() {
             <div class="meta">${escapeHtml(item.details || '')}</div>
           </div>
           <div class="actions">
-            <button data-item-id="${item.id}" data-item-status="todo">todo</button>
-            <button data-item-id="${item.id}" data-item-status="in_progress">in progress</button>
-            <button data-item-id="${item.id}" data-item-status="done">done</button>
+            <button ${disableActions} data-item-id="${item.id}" data-item-status="todo">todo</button>
+            <button ${disableActions} data-item-id="${item.id}" data-item-status="in_progress">in progress</button>
+            <button ${disableActions} data-item-id="${item.id}" data-item-status="done">done</button>
           </div>
         </div>
       `;
@@ -145,6 +253,11 @@ function renderChecklist() {
 }
 
 function renderContextDebug() {
+  if (!state.user) {
+    aiOutput.textContent = 'Login to view context.';
+    return;
+  }
+
   if (!state.context) {
     aiOutput.textContent = 'No project context loaded.';
     return;
@@ -155,6 +268,7 @@ function renderContextDebug() {
 
   aiOutput.textContent = JSON.stringify(
     {
+      user: state.user,
       latestBrief,
       recentComments: latestComments,
       checklistCount: state.context.checklistItems?.length || 0
@@ -164,11 +278,35 @@ function renderContextDebug() {
   );
 }
 
-async function fetchProjects() {
-  const res = await fetch('/api/projects');
-  const data = await res.json();
-  state.projects = data.projects || [];
+async function restoreSession() {
+  const { ok, data } = await api('/api/auth/me');
+  if (!ok || !data?.user) {
+    state.user = null;
+  } else {
+    state.user = data.user;
+  }
+  renderAuth();
+}
 
+async function fetchProjects() {
+  if (!state.user) {
+    state.projects = [];
+    renderProjectOptions();
+    renderProjects();
+    return;
+  }
+
+  const { ok, status, data } = await api('/api/projects');
+  if (!ok) {
+    if (status === 401) {
+      handleUnauthorized();
+      return;
+    }
+    notifyError(data?.error || 'Failed to fetch projects');
+    return;
+  }
+
+  state.projects = data.projects || [];
   if (state.activeProjectId && !state.projects.some((p) => p.id === state.activeProjectId)) {
     state.activeProjectId = null;
   }
@@ -178,22 +316,26 @@ async function fetchProjects() {
 }
 
 async function fetchContext() {
-  if (!state.activeProjectId) {
+  if (!state.user || !state.activeProjectId) {
     state.context = null;
     renderChecklist();
     renderContextDebug();
     return;
   }
 
-  const res = await fetch(`/api/projects/${state.activeProjectId}/context`);
-  if (!res.ok) {
+  const { ok, status, data } = await api(`/api/projects/${state.activeProjectId}/context`);
+  if (!ok) {
+    if (status === 401) {
+      handleUnauthorized();
+      return;
+    }
     state.context = null;
     renderChecklist();
     renderContextDebug();
     return;
   }
 
-  state.context = await res.json();
+  state.context = data;
   renderChecklist();
   renderContextDebug();
 }
@@ -203,31 +345,72 @@ async function refreshAll() {
   await fetchContext();
 }
 
-projectForm.addEventListener('submit', async (event) => {
+authForm.addEventListener('submit', async (event) => {
   event.preventDefault();
-  const formData = new FormData(projectForm);
-
+  const formData = new FormData(authForm);
   const payload = {
-    title: String(formData.get('title') || ''),
-    creatorName: String(formData.get('creatorName') || ''),
-    editorName: String(formData.get('editorName') || '')
+    name: String(formData.get('name') || ''),
+    role: String(formData.get('role') || '')
   };
 
-  const res = await fetch('/api/projects', {
+  const { ok, data } = await api('/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   });
 
-  if (!res.ok) {
-    const err = await res.json();
-    notifyError(`Failed to create project: ${err.error || 'Unknown error'}`);
+  if (!ok) {
+    notifyError(data?.error || 'Login failed');
     return;
   }
 
-  const created = await res.json();
-  setActiveProject(created.project.id);
+  state.user = data.user;
+  authForm.reset();
+  renderAuth();
+  await refreshAll();
+});
+
+logoutButton.addEventListener('click', async () => {
+  await api('/api/auth/logout', { method: 'POST' });
+  handleUnauthorized();
+  summaryOutput.textContent = '';
+  previewVideo.removeAttribute('src');
+  previewMeta.textContent = 'Select a project asset to preview.';
+});
+
+projectForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+
+  if (!state.user) {
+    notifyError('Login first');
+    return;
+  }
+
+  const formData = new FormData(projectForm);
+  const payload = {
+    title: String(formData.get('title') || ''),
+    creatorName: String(formData.get('creatorName') || state.user.name),
+    editorName: String(formData.get('editorName') || '')
+  };
+
+  const { ok, status, data } = await api('/api/projects', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+
+  if (!ok) {
+    if (status === 401) {
+      handleUnauthorized();
+      return;
+    }
+    notifyError(`Failed to create project: ${data?.error || 'Unknown error'}`);
+    return;
+  }
+
+  setActiveProject(data.project.id);
   projectForm.reset();
+  applyRoleDefaults();
   await refreshAll();
 });
 
@@ -246,15 +429,17 @@ uploadForm.addEventListener('submit', async (event) => {
   }
 
   const formData = new FormData(uploadForm);
-
-  const res = await fetch(`/api/projects/${state.activeProjectId}/upload`, {
+  const { ok, status, data } = await api(`/api/projects/${state.activeProjectId}/upload`, {
     method: 'POST',
     body: formData
   });
 
-  if (!res.ok) {
-    const err = await res.json();
-    notifyError(`Upload failed: ${err.error || 'Unknown error'}`);
+  if (!ok) {
+    if (status === 401) {
+      handleUnauthorized();
+      return;
+    }
+    notifyError(`Upload failed: ${data?.error || 'Unknown error'}`);
     return;
   }
 
@@ -273,19 +458,21 @@ briefInputForm.addEventListener('submit', async (event) => {
   const formData = new FormData(briefInputForm);
   const payload = {
     inputType: String(formData.get('inputType') || ''),
-    createdBy: String(formData.get('createdBy') || ''),
     content: String(formData.get('content') || '')
   };
 
-  const res = await fetch(`/api/projects/${state.activeProjectId}/brief-inputs`, {
+  const { ok, status, data } = await api(`/api/projects/${state.activeProjectId}/brief-inputs`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   });
 
-  if (!res.ok) {
-    const err = await res.json();
-    notifyError(`Failed to save brief input: ${err.error || 'Unknown error'}`);
+  if (!ok) {
+    if (status === 401) {
+      handleUnauthorized();
+      return;
+    }
+    notifyError(`Failed to save brief input: ${data?.error || 'Unknown error'}`);
     return;
   }
 
@@ -306,19 +493,21 @@ feedbackForm.addEventListener('submit', async (event) => {
     versionLabel: String(formData.get('versionLabel') || ''),
     timestampSec: Number(formData.get('timestampSec') || 0),
     source: String(formData.get('source') || ''),
-    authorRole: String(formData.get('authorRole') || ''),
     text: String(formData.get('text') || '')
   };
 
-  const res = await fetch(`/api/projects/${state.activeProjectId}/comments`, {
+  const { ok, status, data } = await api(`/api/projects/${state.activeProjectId}/comments`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   });
 
-  if (!res.ok) {
-    const err = await res.json();
-    notifyError(`Failed to add feedback: ${err.error || 'Unknown error'}`);
+  if (!ok) {
+    if (status === 401) {
+      handleUnauthorized();
+      return;
+    }
+    notifyError(`Failed to add feedback: ${data?.error || 'Unknown error'}`);
     return;
   }
 
@@ -357,20 +546,22 @@ checklistEl.addEventListener('click', async (event) => {
 
   const itemId = target.getAttribute('data-item-id');
   const status = target.getAttribute('data-item-status');
-
   if (!itemId || !status) {
     return;
   }
 
-  const res = await fetch(`/api/checklist/${itemId}`, {
+  const { ok, status: httpStatus, data } = await api(`/api/checklist/${itemId}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ status })
   });
 
-  if (!res.ok) {
-    const err = await res.json();
-    notifyError(`Failed to update checklist item: ${err.error || 'Unknown error'}`);
+  if (!ok) {
+    if (httpStatus === 401) {
+      handleUnauthorized();
+      return;
+    }
+    notifyError(`Failed to update checklist item: ${data?.error || 'Unknown error'}`);
     return;
   }
 
@@ -383,12 +574,21 @@ briefButton.addEventListener('click', async () => {
     return;
   }
 
-  const res = await fetch(`/api/projects/${state.activeProjectId}/ai/brief`, {
+  const { ok, status, data } = await api(`/api/projects/${state.activeProjectId}/ai/brief`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({})
   });
-  const data = await res.json();
+
+  if (!ok) {
+    if (status === 401) {
+      handleUnauthorized();
+      return;
+    }
+    notifyError(`Brief generation failed: ${data?.error || 'Unknown error'}`);
+    return;
+  }
+
   aiOutput.textContent = JSON.stringify(data, null, 2);
   await refreshAll();
 });
@@ -399,12 +599,21 @@ checklistButton.addEventListener('click', async () => {
     return;
   }
 
-  const res = await fetch(`/api/projects/${state.activeProjectId}/ai/checklist`, {
+  const { ok, status, data } = await api(`/api/projects/${state.activeProjectId}/ai/checklist`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({})
   });
-  const data = await res.json();
+
+  if (!ok) {
+    if (status === 401) {
+      handleUnauthorized();
+      return;
+    }
+    notifyError(`Checklist generation failed: ${data?.error || 'Unknown error'}`);
+    return;
+  }
+
   aiOutput.textContent = JSON.stringify(data, null, 2);
   await refreshAll();
 });
@@ -415,17 +624,29 @@ summaryButton.addEventListener('click', async () => {
     return;
   }
 
-  const res = await fetch(`/api/projects/${state.activeProjectId}/ai/version-summary`, {
+  const { ok, status, data } = await api(`/api/projects/${state.activeProjectId}/ai/version-summary`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({})
   });
 
-  const data = await res.json();
+  if (!ok) {
+    if (status === 401) {
+      handleUnauthorized();
+      return;
+    }
+    notifyError(`Summary generation failed: ${data?.error || 'Unknown error'}`);
+    return;
+  }
+
   summaryOutput.textContent = JSON.stringify(data, null, 2);
   await refreshAll();
 });
 
-refreshAll().catch((error) => {
+(async () => {
+  await restoreSession();
+  await refreshAll();
+  renderAuth();
+})().catch((error) => {
   aiOutput.textContent = `Failed to initialize app: ${error.message}`;
 });
