@@ -2,13 +2,29 @@
 .venv/
 .venv*/
 venv/
+env/
+ENV/
 
 # Node / frontend
 node_modules/
 .next/
 out/
 dist/
+build/
 coverage/
+*.egg-info/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-dist-info/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
 
 # Env / secrets
 .env
@@ -20,12 +36,18 @@ coverage/
 Thumbs.db
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
 
 # Logs
 *.log
+logs/
 
 # Build artifacts
 *.tmp
+*.temp
+*.cache
 
 # Local runtime state
 data/db.json
@@ -33,3 +55,8 @@ data/app_state.db
 uploads/*
 !uploads/.gitkeep
 !data/.gitkeep
+
+# Opencode (if applicable)
+.opencode/
+.gemini/
+.entire/
