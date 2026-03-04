@@ -2,6 +2,9 @@
 
 Last Updated: 2026-03-04
 
+## Locked Direction
+- Production database technology is locked to PostgreSQL for upcoming migration.
+
 ## Current Maturity
 - Product stage: working MVP + connected workflow
 - Quality stage: hackathon/demo ready
@@ -47,7 +50,7 @@ Last Updated: 2026-03-04
 
 ## Production Readiness Plan (Ordered)
 1. Platform foundation:
-- managed DB/object storage adapters wired to existing store interfaces
+- PostgreSQL state-store adapter + managed object storage adapter wired to existing store interfaces
 - migration scripts and backfill validation
 2. Identity/security hardening:
 - upgrade auth to production-grade identity provider

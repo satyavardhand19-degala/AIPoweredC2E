@@ -4,6 +4,7 @@
 - Frontend: Vanilla HTML/CSS/JS (mobile-first)
 - Backend: Node.js HTTP server (`server.mjs`)
 - State store: pluggable backend (`sqlite` default at `data/app_state.db`, optional `json` at `data/db.json`)
+- Production DB direction (locked): PostgreSQL
 - Object store: pluggable backend (`local` filesystem at `uploads/`)
 - AI services:
   - Speech-to-text for voice notes
@@ -51,7 +52,8 @@
     - `npm run test:security`
     - `npm run test:workflow`
 - Pending:
-  - Managed DB/object storage adapter implementation
+  - PostgreSQL state-store adapter implementation (next mandatory migration target)
+  - Managed object storage adapter implementation
   - Security hardening (centralized audit sink, stronger CSRF/session policy, distributed rate limiting)
 
 ## Core Entities

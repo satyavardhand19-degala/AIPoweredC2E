@@ -85,3 +85,6 @@
 - Re-ran smoke coverage after observability updates:
   - `npm run test:security` passed
   - `npm run test:workflow` passed
+- Pause checkpoint logged before shutdown:
+  - Session paused on user request for break
+  - Resume constraint recorded: migrate project state backend to PostgreSQL as the production DB target

@@ -2,12 +2,17 @@
 
 Last Updated: 2026-03-04
 
+## Pause Checkpoint
+- Session paused by user on 2026-03-04 for break.
+- Resume instruction locked: production database must be PostgreSQL.
+- On resume, priority is implementing PostgreSQL state-store adapter and switching default production path to PostgreSQL.
+
 ## Current Phase
 Phase 3.6: Observability baseline implemented (request IDs + telemetry + health diagnostics).
 
 ## Immediate Next Task
 Phase 3.7 start point:
-1. Add managed DB/object storage adapters (PostgreSQL/S3 or equivalent) behind existing interfaces.
+1. Add PostgreSQL state-store adapter + managed object storage adapter behind existing interfaces.
 2. Add deploy-ready observability hooks (structured metrics, centralized logs, alerts).
 3. Expand test suite from smoke scripts to CI-grade integration/e2e cases.
 
