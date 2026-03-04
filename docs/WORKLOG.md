@@ -35,3 +35,5 @@
   - Added strict JSON-schema response expectations and normalization
   - Added automatic fallback to heuristic generation when provider is unavailable
 - Added `.env.example` with `OPENAI_API_KEY` and `OPENAI_MODEL` configuration.
+- Added explicit production-readiness snapshot and rollout sequence in `docs/PRODUCTION_READINESS.md`.
+- Updated resume flow so new sessions always load production gap context first.

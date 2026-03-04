@@ -33,6 +33,24 @@ Phase 3: Production-grade integrations.
 - Add voice file handling + STT pipeline.
 - Add auth and project-level access controls.
 - Move persistence from local JSON to managed DB/object storage.
+- Add deployment/security/observability hardening for production.
+
+## Production Snapshot
+Ready today (demo quality):
+1. End-to-end creator-editor workflow in web app.
+2. Real file upload + playback.
+3. Structured AI brief generation path.
+4. Timestamped feedback and checklist generation/update flow.
+5. V1 -> V2 summary generation.
+6. Optional OpenAI integration with safe fallback.
+
+Not production-ready yet:
+1. No authentication/authorization.
+2. Local JSON DB and local uploads (no managed persistence).
+3. No voice-file STT pipeline yet.
+4. No background jobs/queue for long-running AI or media tasks.
+5. No deployment baseline (CI/CD, secrets, backups, monitoring, rate limits).
+6. No full automated test suite.
 
 ## Product Decisions Locked
 1. AI must be central, not cosmetic.
