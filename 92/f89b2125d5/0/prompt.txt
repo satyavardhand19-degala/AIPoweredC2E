@@ -1,0 +1,9 @@
+read the docs directory check for the resume session file continue the remaining work
+
+---
+
+run tests
+
+---
+
+commit all the changes
