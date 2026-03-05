@@ -48,6 +48,15 @@ logs/
 *.tmp
 *.temp
 *.cache
+builds/
+artifact/
+artifacts/
+.executables/
+*.exe
+*.bin
+*.dll
+*.dylib
+*.so
 
 # Local runtime state
 data/db.json
