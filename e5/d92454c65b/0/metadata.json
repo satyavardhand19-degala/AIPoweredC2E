@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.4.8",
+  "checkpoint_id": "e5d92454c65b",
+  "session_id": "16a37fe4-e146-4253-8325-8cb2bd5812ed",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-04T10:05:15.893893219Z",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".gitignore",
+    "AI-Powered Workflow for Short-Form Video Creators \u0026 Editors.pdf"
+  ],
+  "agent": "Gemini CLI",
+  "turn_id": "47607c32a46b",
+  "token_usage": {
+    "input_tokens": 52510,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 37905,
+    "output_tokens": 387,
+    "api_call_count": 7
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-04T10:05:15.7685398Z",
+    "agent_lines": 9,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 9,
+    "agent_percentage": 100
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.4.8",
+  "checkpoint_id": "e5d92454c65b",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".gitignore",
+    "AI-Powered Workflow for Short-Form Video Creators \u0026 Editors.pdf"
+  ],
+  "sessions": [
+    {
+      "metadata": "/e5/d92454c65b/0/metadata.json",
+      "transcript": "/e5/d92454c65b/0/full.jsonl",
+      "context": "/e5/d92454c65b/0/context.md",
+      "content_hash": "/e5/d92454c65b/0/content_hash.txt",
+      "prompt": "/e5/d92454c65b/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 52510,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 37905,
+    "output_tokens": 387,
+    "api_call_count": 7
+  }
+}
