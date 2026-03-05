@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { createStateStore } from './lib/state_store.mjs';
 import { createObjectStore } from './lib/object_store.mjs';
 
+import { createRateLimiter } from './lib/rate_limiter.mjs';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PORT = Number(process.env.PORT || 3000);
@@ -18,6 +20,9 @@ const DATA_JSON_FILE = path.join(DATA_DIR, 'db.json');
 const DATA_SQLITE_FILE = path.join(DATA_DIR, 'app_state.db');
 const DATA_BACKEND = process.env.DATA_BACKEND || 'sqlite';
 const OBJECT_STORE_BACKEND = process.env.OBJECT_STORE_BACKEND || 'local';
+const RATE_LIMIT_BACKEND = process.env.RATE_LIMIT_BACKEND || 'in-process';
+const SESSION_BACKEND = process.env.SESSION_BACKEND || 'in-process';
+const ENABLE_ASYNC_JOBS = process.env.ENABLE_ASYNC_JOBS === '1';
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
 const OPENAI_STT_MODEL = process.env.OPENAI_STT_MODEL || 'gpt-4o-mini-transcribe';
@@ -43,6 +48,12 @@ const S3_CONFIG = {
   secretAccessKey: process.env.S3_SECRET_ACCESS_KEY || ''
 };
 
+const REDIS_CONFIG = {
+  host: process.env.REDIS_HOST || 'localhost',
+  port: Number(process.env.REDIS_PORT || 6379),
+  password: process.env.REDIS_PASSWORD || undefined
+};
+
 const SESSION_COOKIE_NAME = 'ce_session';
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
 const SESSION_SECURE_COOKIE = process.env.NODE_ENV === 'production';
@@ -51,7 +62,12 @@ const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX || 240);
 const RATE_LIMIT_AUTH_MAX = Number(process.env.RATE_LIMIT_AUTH_MAX || 30);
 const ENABLE_REQUEST_LOGS = process.env.ENABLE_REQUEST_LOGS === '1';
-const rateLimitStore = new Map();
+
+const rateLimiter = createRateLimiter({
+  backend: RATE_LIMIT_BACKEND,
+  config: REDIS_CONFIG
+});
+
 const telemetry = {
   startedAtMs: Date.now(),
   requestsTotal: 0,
@@ -64,25 +80,20 @@ const telemetry = {
   dbLatencyTotalMs: 0,
   dbRequestsTotal: 0
 };
+
 const stateStore = createStateStore({
   backend: DATA_BACKEND,
   jsonFilePath: DATA_JSON_FILE,
   sqliteFilePath: DATA_SQLITE_FILE,
   postgresConfig: POSTGRES_CONFIG
 });
+
 const objectStore = createObjectStore({
   backend: OBJECT_STORE_BACKEND,
   config: S3_CONFIG,
   baseDir: UPLOAD_DIR,
   baseUrl: '/uploads'
 });
-
-async function ensureStorage() {
-  await mkdir(PUBLIC_DIR, { recursive: true });
-  await mkdir(DATA_DIR, { recursive: true });
-  await stateStore.init();
-  await objectStore.init();
-}
 
 async function readDb() {
   const start = Date.now();
@@ -111,6 +122,25 @@ async function mutateDb(mutator) {
   await dbMutationQueue;
   return result;
 }
+
+import { JobQueue } from './lib/queue.mjs';
+const aiJobQueue = new JobQueue('ai-tasks', { redis: REDIS_CONFIG });
+
+import { createSessionStore } from './lib/session_store.mjs';
+const sessionStore = createSessionStore({
+  backend: SESSION_BACKEND === 'redis' ? 'redis' : 'in-process',
+  config: REDIS_CONFIG,
+  stateStore,
+  mutateDb
+});
+
+async function ensureStorage() {
+  await mkdir(PUBLIC_DIR, { recursive: true });
+  await mkdir(DATA_DIR, { recursive: true });
+  await stateStore.init();
+  await objectStore.init();
+}
+
 
 function sendJson(res, status, payload, headers = {}) {
   const body = JSON.stringify(payload);
@@ -199,18 +229,16 @@ function getSessionToken(req) {
   return cookies[SESSION_COOKIE_NAME] || '';
 }
 
-function getSessionFromDb(req, db) {
+async function getSessionFromDb(req) {
   const token = getSessionToken(req);
   if (!token) {
     return null;
   }
-  const now = Date.now();
-  const session = db.sessions.find((entry) => entry.token === token && Date.parse(entry.expiresAt) > now);
-  return session || null;
+  return sessionStore.get(token);
 }
 
-function getCurrentUserFromDb(req, db) {
-  const session = getSessionFromDb(req, db);
+async function getCurrentUserFromDb(req, db) {
+  const session = await getSessionFromDb(req);
   if (!session) {
     return null;
   }
@@ -225,8 +253,8 @@ function getCurrentUserFromDb(req, db) {
   };
 }
 
-function getCurrentAuthContext(req, db) {
-  const session = getSessionFromDb(req, db);
+async function getCurrentAuthContext(req, db) {
+  const session = await getSessionFromDb(req);
   if (!session) {
     return null;
   }
@@ -262,40 +290,17 @@ function pickRateLimitBucket(pathname) {
   return 'api';
 }
 
-function applyRateLimit(req, pathname) {
+async function applyRateLimit(req, pathname) {
   const ip = getClientIp(req);
   const bucket = pickRateLimitBucket(pathname);
   const key = `${ip}:${bucket}`;
-  const now = Date.now();
-  const max = bucket === 'auth-login' ? RATE_LIMIT_AUTH_MAX : RATE_LIMIT_MAX;
+  const limit = bucket === 'auth-login' ? RATE_LIMIT_AUTH_MAX : RATE_LIMIT_MAX;
 
-  if (rateLimitStore.size > 2000) {
-    for (const [entryKey, entry] of rateLimitStore.entries()) {
-      if (now >= entry.resetAt) {
-        rateLimitStore.delete(entryKey);
-      }
-    }
-  }
-
-  const current = rateLimitStore.get(key);
-  if (!current || now >= current.resetAt) {
-    rateLimitStore.set(key, {
-      count: 1,
-      resetAt: now + RATE_LIMIT_WINDOW_MS
-    });
-    return { allowed: true };
-  }
-
-  if (current.count >= max) {
-    return {
-      allowed: false,
-      retryAfterSeconds: Math.max(1, Math.ceil((current.resetAt - now) / 1000))
-    };
-  }
-
-  current.count += 1;
-  rateLimitStore.set(key, current);
-  return { allowed: true };
+  return rateLimiter.check({
+    key,
+    limit,
+    windowMs: RATE_LIMIT_WINDOW_MS
+  });
 }
 
 function shouldEnforceCsrf(method, pathname) {
@@ -1044,7 +1049,7 @@ const server = createServer(async (req, res) => {
     });
 
     if (pathname.startsWith('/api/')) {
-      const limit = applyRateLimit(req, pathname);
+      const limit = await applyRateLimit(req, pathname);
       if (!limit.allowed) {
         return sendJson(
           res,
@@ -1054,7 +1059,8 @@ const server = createServer(async (req, res) => {
             retryAfterSeconds: limit.retryAfterSeconds
           },
           {
-            'Retry-After': String(limit.retryAfterSeconds)
+            'Retry-After': String(limit.retryAfterSeconds),
+            'X-RateLimit-Reset': String(Math.floor(limit.resetAt / 1000))
           }
         );
       }
@@ -1101,7 +1107,7 @@ const server = createServer(async (req, res) => {
 
     if (shouldEnforceCsrf(method, pathname)) {
       const db = await readDb();
-      const auth = getCurrentAuthContext(req, db);
+      const auth = await getCurrentAuthContext(req, db);
       if (!auth) {
         return unauthorized(res);
       }
@@ -1113,7 +1119,7 @@ const server = createServer(async (req, res) => {
 
     if (method === 'GET' && pathname === '/api/auth/me') {
       const db = await readDb();
-      const auth = getCurrentAuthContext(req, db);
+      const auth = await getCurrentAuthContext(req, db);
       return sendJson(res, 200, {
         user: auth?.user || null,
         csrfToken: auth?.session?.csrfToken || null
@@ -1132,7 +1138,7 @@ const server = createServer(async (req, res) => {
         return badRequest(res, 'role must be creator or editor');
       }
 
-      const result = await mutateDb((db) => {
+      const { user, createdUser } = await mutateDb((db) => {
         let user = findUserByNameAndRole(db, name, role);
         let createdUser = false;
         if (!user) {
@@ -1145,27 +1151,19 @@ const server = createServer(async (req, res) => {
           };
           db.users.push(user);
         }
+        return { user, createdUser };
+      });
 
-        const now = new Date();
-        const nowIso = now.toISOString();
-        const expiresAt = new Date(now.getTime() + SESSION_TTL_SECONDS * 1000).toISOString();
-        const token = randomUUID().replace(/-/g, '') + randomUUID().replace(/-/g, '');
-        const csrfToken = randomUUID().replace(/-/g, '') + randomUUID().replace(/-/g, '');
-        const sessionId = randomUUID();
+      const session = await sessionStore.create({
+        userId: user.id,
+        ttlSeconds: SESSION_TTL_SECONDS
+      });
 
-        db.sessions = db.sessions.filter((session) => Date.parse(session.expiresAt) > Date.now());
-        db.sessions.push({
-          id: sessionId,
-          token,
-          csrfToken,
-          userId: user.id,
-          createdAt: nowIso,
-          expiresAt
-        });
+      await mutateDb((db) => {
         logAudit(db, {
           action: 'auth.login',
           targetType: 'session',
-          targetId: sessionId,
+          targetId: session.id,
           user,
           req,
           meta: {
@@ -1173,15 +1171,9 @@ const server = createServer(async (req, res) => {
             role: user.role
           }
         });
-
-        return {
-          user: { id: user.id, name: user.name, role: user.role },
-          token,
-          csrfToken
-        };
       });
 
-      const cookie = buildCookie(SESSION_COOKIE_NAME, result.token, {
+      const cookie = buildCookie(SESSION_COOKIE_NAME, session.token, {
         maxAge: SESSION_TTL_SECONDS,
         path: '/',
         httpOnly: true,
@@ -1193,8 +1185,8 @@ const server = createServer(async (req, res) => {
         res,
         200,
         {
-          user: result.user,
-          csrfToken: result.csrfToken
+          user: { id: user.id, name: user.name, role: user.role },
+          csrfToken: session.csrfToken
         },
         {
           'Set-Cookie': cookie
@@ -1204,25 +1196,21 @@ const server = createServer(async (req, res) => {
 
     if (method === 'POST' && pathname === '/api/auth/logout') {
       const authDb = await readDb();
-      const auth = getCurrentAuthContext(req, authDb);
+      const auth = await getCurrentAuthContext(req, authDb);
       const token = auth?.session?.token || getSessionToken(req);
       if (token) {
-        await mutateDb((db) => {
-          const before = db.sessions.length;
-          db.sessions = db.sessions.filter((session) => session.token !== token);
-          if (auth?.user) {
+        if (auth?.user) {
+          await mutateDb((db) => {
             logAudit(db, {
               action: 'auth.logout',
               targetType: 'session',
               targetId: auth.session.id,
               user: auth.user,
-              req,
-              meta: {
-                revokedSessionCount: Math.max(0, before - db.sessions.length)
-              }
+              req
             });
-          }
-        });
+          });
+        }
+        await sessionStore.delete(token);
       }
 
       const clearCookie = buildCookie(SESSION_COOKIE_NAME, '', {
@@ -1244,7 +1232,7 @@ const server = createServer(async (req, res) => {
 
     if (method === 'GET' && pathname === '/api/projects') {
       const db = await readDb();
-      const currentUser = getCurrentUserFromDb(req, db);
+      const currentUser = await getCurrentUserFromDb(req, db);
       if (!currentUser) {
         return unauthorized(res);
       }
@@ -1254,7 +1242,7 @@ const server = createServer(async (req, res) => {
 
     if (method === 'POST' && pathname === '/api/projects') {
       const authDb = await readDb();
-      const currentUser = getCurrentUserFromDb(req, authDb);
+      const currentUser = await getCurrentUserFromDb(req, authDb);
       if (!currentUser) {
         return unauthorized(res);
       }
@@ -1308,7 +1296,7 @@ const server = createServer(async (req, res) => {
     if (method === 'GET' && projectContextMatch) {
       const projectId = projectContextMatch[1];
       const db = await readDb();
-      const currentUser = getCurrentUserFromDb(req, db);
+      const currentUser = await getCurrentUserFromDb(req, db);
       if (!currentUser) {
         return unauthorized(res);
       }
@@ -1355,11 +1343,32 @@ const server = createServer(async (req, res) => {
       });
     }
 
+    const jobStatusMatch = pathname.match(/^\/api\/jobs\/([a-f0-9-]+)$/i);
+    if (method === 'GET' && jobStatusMatch) {
+      const jobId = jobStatusMatch[1];
+      const job = await aiJobQueue.getJob(jobId);
+      if (!job) {
+        return notFound(res);
+      }
+      const state = await job.getState();
+      const progress = job.progress;
+      const result = job.returnvalue;
+      const failedReason = job.failedReason;
+
+      return sendJson(res, 200, {
+        id: jobId,
+        state,
+        progress,
+        result,
+        failedReason
+      });
+    }
+
     const auditLogsMatch = pathname.match(/^\/api\/projects\/([a-f0-9-]+)\/audit-logs$/i);
     if (method === 'GET' && auditLogsMatch) {
       const projectId = auditLogsMatch[1];
       const db = await readDb();
-      const currentUser = getCurrentUserFromDb(req, db);
+      const currentUser = await getCurrentUserFromDb(req, db);
       if (!currentUser) {
         return unauthorized(res);
       }
@@ -1383,7 +1392,7 @@ const server = createServer(async (req, res) => {
     if (method === 'POST' && projectUploadMatch) {
       const projectId = projectUploadMatch[1];
       const authDb = await readDb();
-      const currentUser = getCurrentUserFromDb(req, authDb);
+      const currentUser = await getCurrentUserFromDb(req, authDb);
       if (!currentUser) {
         return unauthorized(res);
       }
@@ -1474,7 +1483,7 @@ const server = createServer(async (req, res) => {
     if (voiceNotesMatch) {
       const projectId = voiceNotesMatch[1];
       const db = await readDb();
-      const currentUser = getCurrentUserFromDb(req, db);
+      const currentUser = await getCurrentUserFromDb(req, db);
       if (!currentUser) {
         return unauthorized(res);
       }
@@ -1640,7 +1649,7 @@ const server = createServer(async (req, res) => {
     if (briefInputMatch) {
       const projectId = briefInputMatch[1];
       const db = await readDb();
-      const currentUser = getCurrentUserFromDb(req, db);
+      const currentUser = await getCurrentUserFromDb(req, db);
       if (!currentUser) {
         return unauthorized(res);
       }
@@ -1715,7 +1724,7 @@ const server = createServer(async (req, res) => {
       const body = await parseJsonBody(req);
       const inlineText = String(body.text || '').trim();
       const db = await readDb();
-      const currentUser = getCurrentUserFromDb(req, db);
+      const currentUser = await getCurrentUserFromDb(req, db);
       if (!currentUser) {
         return unauthorized(res);
       }
@@ -1740,6 +1749,20 @@ const server = createServer(async (req, res) => {
 
       if (!mergedText) {
         return badRequest(res, 'No brief input available. Add brief input first.');
+      }
+
+      if (ENABLE_ASYNC_JOBS) {
+        const job = await aiJobQueue.add('generate-brief', {
+          projectId,
+          mergedText,
+          projectInputIds: projectInputs.map((item) => item.id),
+          currentUser
+        });
+        return sendJson(res, 202, {
+          jobId: job.id,
+          status: 'queued',
+          note: 'Brief generation task has been offloaded to background worker.'
+        });
       }
 
       let briefData = inferBriefFromText(mergedText);
@@ -1829,7 +1852,7 @@ const server = createServer(async (req, res) => {
     if (method === 'GET' && latestBriefMatch) {
       const projectId = latestBriefMatch[1];
       const db = await readDb();
-      const currentUser = getCurrentUserFromDb(req, db);
+      const currentUser = await getCurrentUserFromDb(req, db);
       if (!currentUser) {
         return unauthorized(res);
       }
@@ -1852,7 +1875,7 @@ const server = createServer(async (req, res) => {
     if (commentsMatch) {
       const projectId = commentsMatch[1];
       const db = await readDb();
-      const currentUser = getCurrentUserFromDb(req, db);
+      const currentUser = await getCurrentUserFromDb(req, db);
       if (!currentUser) {
         return unauthorized(res);
       }
@@ -1940,7 +1963,7 @@ const server = createServer(async (req, res) => {
       const body = await parseJsonBody(req);
       const externalFeedback = Array.isArray(body.feedback) ? body.feedback : [];
       const db = await readDb();
-      const currentUser = getCurrentUserFromDb(req, db);
+      const currentUser = await getCurrentUserFromDb(req, db);
       if (!currentUser) {
         return unauthorized(res);
       }
@@ -1979,6 +2002,18 @@ const server = createServer(async (req, res) => {
 
       if (!sourceComments.length) {
         return badRequest(res, 'No feedback available to generate checklist.');
+      }
+
+      if (ENABLE_ASYNC_JOBS) {
+        const job = await aiJobQueue.add('generate-checklist', {
+          projectId,
+          sourceComments
+        });
+        return sendJson(res, 202, {
+          jobId: job.id,
+          status: 'queued',
+          note: 'Checklist generation task has been offloaded to background worker.'
+        });
       }
 
       let candidateItems = heuristicChecklistCandidates(sourceComments);
@@ -2092,7 +2127,7 @@ const server = createServer(async (req, res) => {
     if (method === 'GET' && checklistListMatch) {
       const projectId = checklistListMatch[1];
       const db = await readDb();
-      const currentUser = getCurrentUserFromDb(req, db);
+      const currentUser = await getCurrentUserFromDb(req, db);
       if (!currentUser) {
         return unauthorized(res);
       }
@@ -2122,7 +2157,7 @@ const server = createServer(async (req, res) => {
       const body = await parseJsonBody(req);
       const status = safeLower(body.status);
       const authDb = await readDb();
-      const currentUser = getCurrentUserFromDb(req, authDb);
+      const currentUser = await getCurrentUserFromDb(req, authDb);
       if (!currentUser) {
         return unauthorized(res);
       }
@@ -2180,7 +2215,7 @@ const server = createServer(async (req, res) => {
     if (method === 'POST' && versionSummaryMatch) {
       const projectId = versionSummaryMatch[1];
       const db = await readDb();
-      const currentUser = getCurrentUserFromDb(req, db);
+      const currentUser = await getCurrentUserFromDb(req, db);
       if (!currentUser) {
         return unauthorized(res);
       }
@@ -2207,6 +2242,27 @@ const server = createServer(async (req, res) => {
       let fallbackScore = Math.round(40 + (done.length / Math.max(1, checklistItems.length)) * 60);
       if (pendingP0 > 0) {
         fallbackScore = Math.max(20, fallbackScore - pendingP0 * 20);
+      }
+
+      if (ENABLE_ASYNC_JOBS) {
+        const job = await aiJobQueue.add('generate-summary', {
+          projectId,
+          projectTitle: project.title,
+          v1Name: v1.originalName,
+          v2Name: v2.originalName,
+          completedChecklistItems: done.map((item) => item.title),
+          pendingChecklistItems: pending.map((item) => item.title),
+          totalChecklistItems: checklistItems.length,
+          v1Url: v1.url,
+          v2Url: v2.url,
+          v1Id: v1.id,
+          v2Id: v2.id
+        });
+        return sendJson(res, 202, {
+          jobId: job.id,
+          status: 'queued',
+          note: 'Version summary generation task has been offloaded to background worker.'
+        });
       }
 
       let summaryBody = {
@@ -2303,7 +2359,7 @@ const server = createServer(async (req, res) => {
       const rel = pathname.replace('/uploads/', '');
       const safe = path.basename(rel);
       const db = await readDb();
-      const currentUser = getCurrentUserFromDb(req, db);
+      const currentUser = await getCurrentUserFromDb(req, db);
       if (!currentUser) {
         return unauthorized(res);
       }

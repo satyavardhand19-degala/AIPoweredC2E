@@ -53,7 +53,7 @@
   - Added optional OpenAI transcription integration (`/v1/audio/transcriptions`)
   - Added fallback transcript behavior when provider/key unavailable
   - Auto-linked voice transcripts into `briefInputs` (brief context) or `comments` (feedback context)
-  - Added voice-note visibility in project context and UI
+  - Added voice-note records exposed in project context + UI
 - Validated voice-note flow end-to-end (auth, upload, attach, protected media access).
 - Implemented Phase 3.3 security baseline:
   - Added CSRF token issuance and mutating-route CSRF validation
@@ -97,6 +97,20 @@
   - Added `pg` library dependency
   - Created `PostgresStateStore` class with connection pooling
   - Added `DATA_BACKEND=postgres` support in `.env.example`
-  - Added PostgreSQL config options: host, port, database, user, password, ssl, maxConnections
+  - Add PostgreSQL config options: host, port, database, user, password, ssl, maxConnections
   - Supports `DATABASE_URL` connection string for convenience
   - Verified existing tests still pass (sqlite backend)
+
+## 2026-03-05
+- Implemented Phase 3.7: Production-grade managed persistence & observability:
+  - Added `S3ObjectStore` adapter in `lib/object_store.mjs` using `@aws-sdk/client-s3`.
+  - Added `GET /api/metrics` endpoint with real-time throughput and latency tracking.
+  - Rewired `/uploads/` to use `objectStore.get()` (supporting both local and S3).
+  - Enhanced telemetry hooks for AI provider and Database operation tracking.
+  - Improved request logging with structured levels (`info`, `error`) and JSON formatting.
+  - Built a comprehensive automated test suite in `test/` using the native `node:test` runner.
+  - Added `npm test` script and updated `package.json` with S3 dependencies.
+  - Updated `.env.example` with S3 and managed persistence configuration blocks.
+  - Verified full API and Store integrity with `node:test` (all 9 test cases passed).
+- Committed all changes: "feat: add S3 object storage, metrics endpoint, and structured test suite".
+- Updated `docs/SESSION_STATE.md` to reflect current phase and upcoming roadmap.

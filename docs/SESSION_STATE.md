@@ -1,6 +1,6 @@
 # Session State
 
-Last Updated: 2026-03-04
+Last Updated: 2026-03-05
 
 ## Pause Checkpoint
 - Session paused by user on 2026-03-04 for break.
@@ -8,13 +8,13 @@ Last Updated: 2026-03-04
 - On resume, priority is implementing PostgreSQL state-store adapter and switching default production path to PostgreSQL.
 
 ## Current Phase
-Phase 3.7: Managed persistence and observability hooks (S3 + Postgres-ready + Metrics + Structured Tests).
+Phase 3.8: Distributed scalability and background processing (Redis + BullMQ + Session Store).
 
 ## Immediate Next Task
-Phase 3.8 start point:
-1. Implement distributed rate limiting (Redis-backed) or move to managed WAF.
-2. Add background job queue (e.g., BullMQ) for AI and media tasks.
-3. Secure cookie rotation and session revocation strategy.
+Phase 3.9 start point:
+1. Production security hardening: add security headers (Helmet-like) and advanced CORS.
+2. Structured Error Handling: standardize API error codes and centralized error middleware.
+3. Final review of Production Readiness checklist.
 
 ## What Is Completed
 1. Problem statement read and decoded from local PDF.
@@ -81,6 +81,14 @@ Phase 3.8 start point:
 - Added structured unit/integration test suite using `node:test` (`npm test`)
 - Updated `package.json` with `@aws-sdk/client-s3` and test scripts
 - Updated `server.mjs` to use `objectStore.get()` and enriched telemetry hooks
+15. Phase 3.8 distributed scalability and background processing completed:
+- Integrated Redis support via `ioredis` library.
+- Implemented `lib/rate_limiter.mjs` supporting both in-process and distributed (Redis + Lua) strategies.
+- Implemented `lib/queue.mjs` and `worker.mjs` using BullMQ for offloading AI tasks (brief, checklist, summary).
+- Implemented `lib/session_store.mjs` to decouple session management from core state, supporting Redis persistence.
+- Refactored `server.mjs` auth helpers to be `async` and use the session store.
+- Added `GET /api/jobs/:id` for tracking background task progress and results.
+- Updated `.env.example` with Redis, Session, and Async Job configuration flags.
 
 ## Next Build Phase
 Phase 3: Production-grade integrations.
@@ -97,13 +105,13 @@ Ready today (demo quality):
 6. Optional OpenAI integration with safe fallback.
 7. Basic authenticated collaboration with role-based restrictions.
 8. Baseline per-project audit visibility for key state mutations.
+9. Redis-backed rate limiting and session management ready.
+10. Background job queue for long-running tasks ready.
 
 Not production-ready yet:
-1. Local SQLite/JSON state and local uploads (no managed persistence).
-2. No background jobs/queue for long-running AI or media tasks.
-3. No deployment baseline (CI/CD, secrets, backups, monitoring, rate limits).
-4. No CI-grade automated test suite (only local smoke scripts currently).
-5. Security hardening is partial (no distributed rate limiting, no centralized audit pipeline, limited CSRF/session policy depth).
+1. No background worker deployment instructions.
+2. Deployment hardening (headers, CORS, standard errors) in progress.
+3. No automated CI/CD pipeline defined.
 
 ## Product Decisions Locked
 1. AI must be central, not cosmetic.
