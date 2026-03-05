@@ -1,0 +1,39 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "28fdf5987dfd",
+  "session_id": "ses_347b8bd9cffeM9r2Sx9wgQTil7",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-05T05:32:06.108218557Z",
+  "branch": "main",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "public/app.js",
+    "scripts/env_check.mjs",
+    "server.mjs",
+    "worker.mjs",
+    "Dockerfile",
+    "docs/SESSION_STATE.md",
+    "docs/WORKLOG.md",
+    "process.json"
+  ],
+  "agent": "OpenCode",
+  "turn_id": "df8be07aad9d",
+  "checkpoint_transcript_start": 2,
+  "transcript_lines_at_start": 2,
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-05T05:32:06.08909194Z",
+    "agent_lines": 385,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 385,
+    "agent_percentage": 100
+  }
+}
