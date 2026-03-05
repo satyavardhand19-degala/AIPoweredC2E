@@ -1,0 +1,78 @@
+{
+  "info": {
+    "id": "ses_347b8bd9cffeM9r2Sx9wgQTil7",
+    "slug": "proud-moon",
+    "projectID": "6cab42a09fe577e8d0a2dbaaa321fef1cab06362",
+    "directory": "/home/satya19/buildathon",
+    "title": "New session - 2026-03-04T09:56:43.747Z",
+    "version": "1.2.16",
+    "summary": {
+      "additions": 0,
+      "deletions": 0,
+      "files": 0
+    },
+    "time": {
+      "created": 1772618203747,
+      "updated": 1772618203900
+    }
+  },
+  "messages": [
+    {
+      "info": {
+        "role": "user",
+        "time": {
+          "created": 1772618203781
+        },
+        "summary": {
+          "diffs": []
+        },
+        "agent": "build",
+        "model": {
+          "providerID": "opencode",
+          "modelID": "big-pickle"
+        },
+        "id": "msg_cb847426c001dTCaRRhjec0Od2",
+        "sessionID": "ses_347b8bd9cffeM9r2Sx9wgQTil7"
+      },
+      "parts": [
+        {
+          "type": "text",
+          "text": "hi",
+          "id": "prt_cb847426d0015YAk46puXUNYe1",
+          "sessionID": "ses_347b8bd9cffeM9r2Sx9wgQTil7",
+          "messageID": "msg_cb847426c001dTCaRRhjec0Od2"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1772618203821
+        },
+        "parentID": "msg_cb847426c001dTCaRRhjec0Od2",
+        "modelID": "big-pickle",
+        "providerID": "opencode",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/home/satya19/buildathon",
+          "root": "/home/satya19/buildathon"
+        },
+        "cost": 0,
+        "tokens": {
+          "input": 0,
+          "output": 0,
+          "reasoning": 0,
+          "cache": {
+            "read": 0,
+            "write": 0
+          }
+        },
+        "id": "REDACTED",
+        "sessionID": "ses_347b8bd9cffeM9r2Sx9wgQTil7"
+      },
+      "parts": []
+    }
+  ]
+}
