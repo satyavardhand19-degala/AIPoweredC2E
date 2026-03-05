@@ -51,6 +51,38 @@ function notifyError(message) {
   alert(message);
 }
 
+async function pollJob(jobId, onComplete, onError) {
+  const maxAttempts = 60;
+  let attempts = 0;
+
+  const timer = setInterval(async () => {
+    attempts += 1;
+    if (attempts > maxAttempts) {
+      clearInterval(timer);
+      onError('Task timed out after 60 seconds.');
+      return;
+    }
+
+    const { ok, data } = await api(`/api/jobs/${jobId}`);
+    if (!ok) {
+      clearInterval(timer);
+      onError('Failed to check task status.');
+      return;
+    }
+
+    if (data.state === 'completed') {
+      clearInterval(timer);
+      onComplete(data.result);
+    } else if (data.state === 'failed') {
+      clearInterval(timer);
+      onError(`Task failed: ${data.failedReason || 'Unknown error'}`);
+    } else {
+      // Still active (waiting or active)
+      aiOutput.textContent = `Processing task: ${data.state}... (${attempts}s)`;
+    }
+  }, 1000);
+}
+
 function setActiveProject(projectId) {
   state.activeProjectId = projectId;
 }
@@ -665,12 +697,23 @@ briefButton.addEventListener('click', async () => {
       handleUnauthorized();
       return;
     }
-    notifyError(`Brief generation failed: ${data?.error || 'Unknown error'}`);
+    notifyError(`Brief generation failed: ${data?.error?.message || data?.error || 'Unknown error'}`);
     return;
   }
 
-  aiOutput.textContent = JSON.stringify(data, null, 2);
-  await refreshAll();
+  if (status === 202 && data.jobId) {
+    pollJob(
+      data.jobId,
+      async (result) => {
+        aiOutput.textContent = JSON.stringify(result, null, 2);
+        await refreshAll();
+      },
+      (err) => notifyError(err)
+    );
+  } else {
+    aiOutput.textContent = JSON.stringify(data, null, 2);
+    await refreshAll();
+  }
 });
 
 checklistButton.addEventListener('click', async () => {
@@ -690,12 +733,23 @@ checklistButton.addEventListener('click', async () => {
       handleUnauthorized();
       return;
     }
-    notifyError(`Checklist generation failed: ${data?.error || 'Unknown error'}`);
+    notifyError(`Checklist generation failed: ${data?.error?.message || data?.error || 'Unknown error'}`);
     return;
   }
 
-  aiOutput.textContent = JSON.stringify(data, null, 2);
-  await refreshAll();
+  if (status === 202 && data.jobId) {
+    pollJob(
+      data.jobId,
+      async (result) => {
+        aiOutput.textContent = JSON.stringify(result, null, 2);
+        await refreshAll();
+      },
+      (err) => notifyError(err)
+    );
+  } else {
+    aiOutput.textContent = JSON.stringify(data, null, 2);
+    await refreshAll();
+  }
 });
 
 summaryButton.addEventListener('click', async () => {
@@ -715,12 +769,23 @@ summaryButton.addEventListener('click', async () => {
       handleUnauthorized();
       return;
     }
-    notifyError(`Summary generation failed: ${data?.error || 'Unknown error'}`);
+    notifyError(`Summary generation failed: ${data?.error?.message || data?.error || 'Unknown error'}`);
     return;
   }
 
-  summaryOutput.textContent = JSON.stringify(data, null, 2);
-  await refreshAll();
+  if (status === 202 && data.jobId) {
+    pollJob(
+      data.jobId,
+      async (result) => {
+        summaryOutput.textContent = JSON.stringify(result, null, 2);
+        await refreshAll();
+      },
+      (err) => notifyError(err)
+    );
+  } else {
+    summaryOutput.textContent = JSON.stringify(data, null, 2);
+    await refreshAll();
+  }
 });
 
 (async () => {

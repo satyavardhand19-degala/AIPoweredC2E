@@ -64,7 +64,7 @@
 - Implemented Phase 3.4 persistence abstraction:
   - Added `lib/state_store.mjs` with `sqlite` (default) and `json` backend support
   - Added `lib/object_store.mjs` with local object-store adapter
-  - Refactored `server.mjs` persistence and uploads to use store interfaces
+  - Refactored `server.mjs` persistence and uploads to use adapter interfaces
   - Added backend flags in `.env.example`: `DATA_BACKEND`, `OBJECT_STORE_BACKEND`
   - Extended runtime artifact ignores for SQLite state file (`data/app_state.db`)
 - Re-ran smoke coverage after migration:
@@ -72,45 +72,37 @@
   - `npm run test:workflow` passed
 - Implemented Phase 3.5 audit baseline:
   - Added persisted `auditLogs` collection to state store normalization/defaults
-  - Added audit event logging across key mutating workflows
+  - Added audit event logging across key workflows
   - Added project-scoped audit retrieval endpoint: `GET /api/projects/:id/audit-logs`
-- Re-ran smoke coverage after audit integration:
-  - `npm run test:security` passed
-  - `npm run test:workflow` passed
 - Implemented Phase 3.6 observability baseline:
   - Added `X-Request-Id` response header emission
   - Added in-memory request telemetry counters
   - Enriched `/api/health` with uptime/backend/telemetry details
   - Added optional JSON request logging (`ENABLE_REQUEST_LOGS=1`)
-- Re-ran smoke coverage after observability updates:
-  - `npm run test:security` passed
-  - `npm run test:workflow` passed
-- Pause checkpoint logged before shutdown:
-  - Session paused on user request for break
-  - Resume constraint recorded: migrate project state backend to PostgreSQL as the production DB target
-- Updated `.gitignore` with comprehensive patterns:
-  - Python artifacts (__pycache__, *.pyc, .pytest_cache, etc.)
-  - Build/cache directories (build/, .mypy_cache/, .ruff_cache/)
-  - Editor temp files (*.swp, *~)
-  - Additional runtime directories (.entire/, .opencode/, .gemini/)
 - Implemented Phase 4.1 PostgreSQL state store backend:
   - Added `pg` library dependency
   - Created `PostgresStateStore` class with connection pooling
   - Added `DATA_BACKEND=postgres` support in `.env.example`
-  - Add PostgreSQL config options: host, port, database, user, password, ssl, maxConnections
-  - Supports `DATABASE_URL` connection string for convenience
-  - Verified existing tests still pass (sqlite backend)
 
 ## 2026-03-05
 - Implemented Phase 3.7: Production-grade managed persistence & observability:
-  - Added `S3ObjectStore` adapter in `lib/object_store.mjs` using `@aws-sdk/client-s3`.
-  - Added `GET /api/metrics` endpoint with real-time throughput and latency tracking.
-  - Rewired `/uploads/` to use `objectStore.get()` (supporting both local and S3).
-  - Enhanced telemetry hooks for AI provider and Database operation tracking.
-  - Improved request logging with structured levels (`info`, `error`) and JSON formatting.
-  - Built a comprehensive automated test suite in `test/` using the native `node:test` runner.
-  - Added `npm test` script and updated `package.json` with S3 dependencies.
-  - Updated `.env.example` with S3 and managed persistence configuration blocks.
-  - Verified full API and Store integrity with `node:test` (all 9 test cases passed).
-- Committed all changes: "feat: add S3 object storage, metrics endpoint, and structured test suite".
-- Updated `docs/SESSION_STATE.md` to reflect current phase and upcoming roadmap.
+  - Added `S3ObjectStore` adapter using `@aws-sdk/client-s3`.
+  - Added `GET /api/metrics` endpoint with AI and DB latency tracking.
+  - Rewired `/uploads/` to use `objectStore.get()` proxy retrieval.
+  - Built automated test suite in `test/` using `node:test`.
+- Implemented Phase 3.8: Distributed scalability and background processing:
+  - Integrated Redis via `ioredis` for rate limiting and session storage.
+  - Implemented BullMQ background processing with `worker.mjs` for AI tasks.
+  - Added `GET /api/jobs/:id` status tracking.
+  - Refactored session management into standalone `lib/session_store.mjs`.
+- Implemented Phase 3.9 & 3.10: Security Hardening, Error Handling, and Deployment:
+  - Added standard security headers (CSP, HSTS, No-Sniff, X-Frame).
+  - Implemented basic CORS policy support.
+  - Standardized JSON error response format with unique error codes.
+  - Added graceful shutdown logic for Server and Worker (handling SIGTERM/SIGINT).
+  - Implemented request validation layer with `VALIDATION_SCHEMAS`.
+  - Updated Frontend (`app.js`) to support polling for asynchronous background tasks.
+  - Created `Dockerfile` for containerized deployment.
+  - Created `process.json` for PM2 process orchestration.
+  - Added `scripts/env_check.mjs` for critical environment variable validation.
+- Verified all core paths with `npm test`.

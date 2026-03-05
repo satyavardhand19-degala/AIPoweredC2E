@@ -372,3 +372,22 @@ const worker = createWorker('ai-tasks', async (job) => {
 
 console.log('Worker started, listening for jobs...');
 stateStore.init().then(() => console.log('State store initialized in worker'));
+
+async function shutdown(signal) {
+  console.log(`Received ${signal}, shutting down worker gracefully...`);
+  try {
+    await worker.close();
+    console.log('BullMQ worker closed.');
+    if (typeof stateStore.close === 'function') {
+      await stateStore.close();
+      console.log('State store connection closed.');
+    }
+    process.exit(0);
+  } catch (err) {
+    console.error('Error during worker shutdown:', err);
+    process.exit(1);
+  }
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

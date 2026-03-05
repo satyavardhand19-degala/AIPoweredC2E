@@ -142,7 +142,36 @@ async function ensureStorage() {
 }
 
 
+function applySecurityHeaders(res) {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  if (process.env.NODE_ENV === 'production') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+  // CSP: Basic policy allowing self and few essentials
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' blob:;");
+}
+
+function handleCors(req, res) {
+  const origin = req.headers.origin;
+  // In production, you would check origin against an allow-list
+  res.setHeader('Access-Control-Allow-Origin', origin || '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', `Content-Type, Authorization, ${CSRF_HEADER_NAME}`);
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return true;
+  }
+  return false;
+}
+
 function sendJson(res, status, payload, headers = {}) {
+  applySecurityHeaders(res);
   const body = JSON.stringify(payload);
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
@@ -152,20 +181,30 @@ function sendJson(res, status, payload, headers = {}) {
   res.end(body);
 }
 
-function notFound(res) {
-  sendJson(res, 404, { error: 'Not found' });
+function sendError(res, status, code, message, details = null) {
+  sendJson(res, status, {
+    error: {
+      code,
+      message,
+      details
+    }
+  });
 }
 
-function badRequest(res, message) {
-  sendJson(res, 400, { error: message });
+function notFound(res) {
+  sendError(res, 404, 'NOT_FOUND', 'The requested resource was not found');
+}
+
+function badRequest(res, message, details = null) {
+  sendError(res, 400, 'BAD_REQUEST', message, details);
 }
 
 function unauthorized(res, message = 'Authentication required') {
-  sendJson(res, 401, { error: message });
+  sendError(res, 401, 'UNAUTHORIZED', message);
 }
 
 function forbidden(res, message = 'Forbidden') {
-  sendJson(res, 403, { error: message });
+  sendError(res, 403, 'FORBIDDEN', message);
 }
 
 function safeLower(value) {
@@ -834,6 +873,47 @@ function updateProjectStatusFromChecklist(projectId, db) {
   project.status = open > 0 ? 'changes_requested' : 'ready_for_publish';
 }
 
+const VALIDATION_SCHEMAS = {
+  login: {
+    name: { type: 'string', min: 1, max: 50, required: true },
+    role: { type: 'string', enum: ['creator', 'editor'], required: true }
+  },
+  createProject: {
+    title: { type: 'string', min: 3, max: 100, required: true },
+    creatorName: { type: 'string', min: 1, max: 50, required: true },
+    editorName: { type: 'string', min: 1, max: 50, required: true }
+  },
+  createBriefInput: {
+    inputType: { type: 'string', enum: ['text', 'voice', 'url'], required: true },
+    content: { type: 'string', min: 1, max: 5000, required: true }
+  }
+};
+
+function validate(data, schema) {
+  const errors = [];
+  for (const [key, rules] of Object.entries(schema)) {
+    const value = data[key];
+    if (rules.required && (value === undefined || value === null || value === '')) {
+      errors.push(`${key} is required`);
+      continue;
+    }
+    if (value === undefined || value === null || value === '') continue;
+
+    if (rules.type === 'string') {
+      if (typeof value !== 'string') {
+        errors.push(`${key} must be a string`);
+      } else {
+        if (rules.min && value.length < rules.min) errors.push(`${key} must be at least ${rules.min} characters`);
+        if (rules.max && value.length > rules.max) errors.push(`${key} must be at most ${rules.max} characters`);
+      }
+    }
+    if (rules.enum && !rules.enum.includes(value)) {
+      errors.push(`${key} must be one of: ${rules.enum.join(', ')}`);
+    }
+  }
+  return errors.length > 0 ? errors : null;
+}
+
 async function parseJsonBody(req, maxBytes = 2 * 1024 * 1024) {
   const chunks = [];
   let total = 0;
@@ -1027,6 +1107,8 @@ function logAudit(db, { projectId = null, user = null, action, targetType, targe
 }
 
 const server = createServer(async (req, res) => {
+  if (handleCors(req, res)) return;
+
   try {
     const method = req.method || 'GET';
     const url = new URL(req.url || '/', `http://${req.headers.host}`);
@@ -1051,16 +1133,13 @@ const server = createServer(async (req, res) => {
     if (pathname.startsWith('/api/')) {
       const limit = await applyRateLimit(req, pathname);
       if (!limit.allowed) {
-        return sendJson(
+        return sendError(
           res,
           429,
+          'RATE_LIMIT_EXCEEDED',
+          'Too many requests, please try again later.',
           {
-            error: 'Too many requests',
             retryAfterSeconds: limit.retryAfterSeconds
-          },
-          {
-            'Retry-After': String(limit.retryAfterSeconds),
-            'X-RateLimit-Reset': String(Math.floor(limit.resetAt / 1000))
           }
         );
       }
@@ -1128,15 +1207,13 @@ const server = createServer(async (req, res) => {
 
     if (method === 'POST' && pathname === '/api/auth/login') {
       const body = await parseJsonBody(req);
-      const name = String(body.name || '').trim();
-      const role = safeLower(body.role);
+      const valErrors = validate(body, VALIDATION_SCHEMAS.login);
+      if (valErrors) {
+        return badRequest(res, 'Validation failed', valErrors);
+      }
 
-      if (!name) {
-        return badRequest(res, 'name is required');
-      }
-      if (!['creator', 'editor'].includes(role)) {
-        return badRequest(res, 'role must be creator or editor');
-      }
+      const name = String(body.name).trim();
+      const role = safeLower(body.role);
 
       const { user, createdUser } = await mutateDb((db) => {
         let user = findUserByNameAndRole(db, name, role);
@@ -1251,13 +1328,15 @@ const server = createServer(async (req, res) => {
       }
 
       const body = await parseJsonBody(req);
-      const title = String(body.title || '').trim();
-      const creatorName = String(body.creatorName || '').trim() || currentUser.name;
-      const editorName = String(body.editorName || '').trim();
-
-      if (!title || !creatorName || !editorName) {
-        return badRequest(res, 'title, creatorName, and editorName are required');
+      const valErrors = validate(body, VALIDATION_SCHEMAS.createProject);
+      if (valErrors) {
+        return badRequest(res, 'Validation failed', valErrors);
       }
+
+      const title = String(body.title).trim();
+      const creatorName = String(body.creatorName).trim();
+      const editorName = String(body.editorName).trim();
+
       if (normalizeName(creatorName) !== normalizeName(currentUser.name)) {
         return badRequest(res, 'creatorName must match logged-in creator');
       }
@@ -1670,16 +1749,14 @@ const server = createServer(async (req, res) => {
 
       if (method === 'POST') {
         const body = await parseJsonBody(req);
-        const inputType = safeLower(body.inputType);
-        const content = String(body.content || '').trim();
-        const createdBy = safeLower(currentUser.role);
+        const valErrors = validate(body, VALIDATION_SCHEMAS.createBriefInput);
+        if (valErrors) {
+          return badRequest(res, 'Validation failed', valErrors);
+        }
 
-        if (!['text', 'voice', 'url'].includes(inputType)) {
-          return badRequest(res, 'inputType must be one of text, voice, url');
-        }
-        if (!content) {
-          return badRequest(res, 'content is required');
-        }
+        const inputType = safeLower(body.inputType);
+        const content = String(body.content).trim();
+        const createdBy = safeLower(currentUser.role);
 
         const created = await mutateDb((latestDb) => {
           const latestProject = ensureProject(latestDb, projectId);
@@ -2394,10 +2471,14 @@ const server = createServer(async (req, res) => {
 
     return notFound(res);
   } catch (error) {
-    return sendJson(res, 500, {
-      error: 'Internal server error',
-      details: error instanceof Error ? error.message : 'Unknown error'
-    });
+    console.error('Unhandled server error:', error);
+    return sendError(
+      res,
+      500,
+      'INTERNAL_SERVER_ERROR',
+      'An unexpected error occurred on the server',
+      process.env.NODE_ENV === 'development' ? { message: error.message, stack: error.stack } : null
+    );
   }
 });
 
@@ -2411,3 +2492,31 @@ ensureStorage()
     console.error('Failed to initialize storage', error);
     process.exit(1);
   });
+
+async function shutdown(signal) {
+  console.log(`Received ${signal}, shutting down gracefully...`);
+  server.close(async () => {
+    console.log('HTTP server closed.');
+    try {
+      await aiJobQueue.close();
+      console.log('Job queue connection closed.');
+      if (typeof stateStore.close === 'function') {
+        await stateStore.close();
+        console.log('State store connection closed.');
+      }
+      process.exit(0);
+    } catch (err) {
+      console.error('Error during shutdown:', err);
+      process.exit(1);
+    }
+  });
+
+  // Force close after 10s
+  setTimeout(() => {
+    console.error('Could not close connections in time, forcefully shutting down');
+    process.exit(1);
+  }, 10000);
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
