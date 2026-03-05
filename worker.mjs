@@ -10,9 +10,12 @@ const __dirname = path.dirname(__filename);
 const DATA_DIR = path.join(__dirname, 'data');
 const DATA_JSON_FILE = path.join(DATA_DIR, 'db.json');
 const DATA_SQLITE_FILE = path.join(DATA_DIR, 'app_state.db');
-const DATA_BACKEND = process.env.DATA_BACKEND || 'sqlite';
+const DATA_BACKEND = process.env.DATA_BACKEND || (process.env.NODE_ENV === 'production' ? 'postgres' : 'sqlite');
+const AI_PROVIDER = process.env.AI_PROVIDER || 'openai';
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
+const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
+const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
 
 const POSTGRES_CONFIG = {
   host: process.env.POSTGRES_HOST || 'localhost',
@@ -91,24 +94,46 @@ function extractResponsesOutputText(payload) {
   return chunks.join('\n').trim();
 }
 
-async function callOpenAIJson({ schemaName, schema, systemPrompt, userPrompt }) {
-  if (!OPENAI_API_KEY) return { ok: false, error: 'missing_api_key' };
+async function callAIJson({ schemaName, schema, systemPrompt, userPrompt }) {
+  const isGroq = AI_PROVIDER === 'groq';
+  const apiKey = isGroq ? GROQ_API_KEY : OPENAI_API_KEY;
+  const model = isGroq ? GROQ_MODEL : OPENAI_MODEL;
+  const baseUrl = isGroq ? 'https://api.groq.com/openai/v1/chat/completions' : 'https://api.openai.com/v1/responses';
+
+  if (!apiKey) return { ok: false, error: 'missing_api_key' };
   try {
-    const response = await fetch('https://api.openai.com/v1/responses', {
+    const body = isGroq ? {
+      model,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      response_format: { type: 'json_object' }
+    } : {
+      model,
+      input: [
+        { role: 'system', content: [{ type: 'input_text', text: systemPrompt }] },
+        { role: 'user', content: [{ type: 'input_text', text: userPrompt }] }
+      ],
+      text: { format: { type: 'json_schema', name: schemaName, schema, strict: true } }
+    };
+
+    const response = await fetch(baseUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${OPENAI_API_KEY}` },
-      body: JSON.stringify({
-        model: OPENAI_MODEL,
-        input: [
-          { role: 'system', content: [{ type: 'input_text', text: systemPrompt }] },
-          { role: 'user', content: [{ type: 'input_text', text: userPrompt }] }
-        ],
-        text: { format: { type: 'json_schema', name: schemaName, schema, strict: true } }
-      })
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify(body)
     });
-    if (!response.ok) return { ok: false, error: `openai_http_${response.status}` };
+
+    if (!response.ok) return { ok: false, error: `${AI_PROVIDER}_http_${response.status}` };
     const payload = await response.json();
-    const rawText = extractResponsesOutputText(payload);
+
+    let rawText = '';
+    if (isGroq) {
+      rawText = payload.choices?.[0]?.message?.content || '';
+    } else {
+      rawText = extractResponsesOutputText(payload);
+    }
+
     if (!rawText) return { ok: false, error: 'empty_output' };
     try {
       return { ok: true, data: JSON.parse(rawText) };
@@ -116,7 +141,7 @@ async function callOpenAIJson({ schemaName, schema, systemPrompt, userPrompt }) 
       return { ok: false, error: 'invalid_json_output' };
     }
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : 'openai_request_failed' };
+    return { ok: false, error: error instanceof Error ? error.message : `${AI_PROVIDER}_request_failed` };
   }
 }
 
@@ -176,7 +201,7 @@ async function processBriefGeneration(job) {
     required: ['hook_style', 'tone', 'target_duration_sec', 'caption_style', 'music_vibe', 'cta_type', 'dos', 'donts']
   };
 
-  const modelResult = await callOpenAIJson({
+  const modelResult = await callAIJson({
     schemaName: 'creator_editor_brief',
     schema: BRIEF_JSON_SCHEMA,
     systemPrompt: 'You generate structured short-video editing briefs from unstructured creator/editor inputs. Respond with strict JSON only.',
@@ -203,7 +228,7 @@ async function processBriefGeneration(job) {
       projectId,
       sourceInputIds: projectInputIds,
       brief: { ...briefData, source_input: mergedText },
-      model: OPENAI_MODEL,
+      model: AI_PROVIDER === 'groq' ? GROQ_MODEL : OPENAI_MODEL,
       createdAt: new Date().toISOString()
     };
     db.briefs.push(brief);
@@ -256,7 +281,7 @@ async function processChecklistGeneration(job) {
     versionLabel: item.versionLabel
   }));
 
-  const modelResult = await callOpenAIJson({
+  const modelResult = await callAIJson({
     schemaName: 'creator_editor_checklist',
     schema: CHECKLIST_JSON_SCHEMA,
     systemPrompt: 'You are an assistant that converts review feedback into an actionable revision checklist for a video editor. Return strict JSON only.',
@@ -315,7 +340,7 @@ async function processSummaryGeneration(job) {
     required: ['improvements', 'remaining_issues', 'publish_readiness_score']
   };
 
-  const modelResult = await callOpenAIJson({
+  const modelResult = await callAIJson({
     schemaName: 'creator_editor_version_summary',
     schema: SUMMARY_JSON_SCHEMA,
     systemPrompt: 'You summarize editing progress between V1 and V2 based on checklist completion and known issues. Return strict JSON only.',

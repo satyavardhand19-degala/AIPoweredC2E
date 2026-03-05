@@ -18,7 +18,7 @@ const DATA_DIR = path.join(__dirname, 'data');
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
 const DATA_JSON_FILE = path.join(DATA_DIR, 'db.json');
 const DATA_SQLITE_FILE = path.join(DATA_DIR, 'app_state.db');
-const DATA_BACKEND = process.env.DATA_BACKEND || 'sqlite';
+const DATA_BACKEND = process.env.DATA_BACKEND || (process.env.NODE_ENV === 'production' ? 'postgres' : 'sqlite');
 const OBJECT_STORE_BACKEND = process.env.OBJECT_STORE_BACKEND || 'local';
 const RATE_LIMIT_BACKEND = process.env.RATE_LIMIT_BACKEND || 'in-process';
 const SESSION_BACKEND = process.env.SESSION_BACKEND || 'in-process';
