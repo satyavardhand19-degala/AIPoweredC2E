@@ -11,6 +11,8 @@
     "lib/queue.mjs",
     "lib/rate_limiter.mjs",
     "lib/session_store.mjs",
+    "package-lock.json",
+    "package.json",
     "server.mjs",
     "worker.mjs"
   ],
@@ -21,6 +23,13 @@
       "context": "/07/881ccebedb/0/context.md",
       "content_hash": "/07/881ccebedb/0/content_hash.txt",
       "prompt": "/07/881ccebedb/0/prompt.txt"
+    },
+    {
+      "metadata": "/07/881ccebedb/1/metadata.json",
+      "transcript": "/07/881ccebedb/1/full.jsonl",
+      "context": "/07/881ccebedb/1/context.md",
+      "content_hash": "/07/881ccebedb/1/content_hash.txt",
+      "prompt": "/07/881ccebedb/1/prompt.txt"
     }
   ],
   "token_usage": {
