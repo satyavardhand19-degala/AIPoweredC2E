@@ -1,71 +1,43 @@
 # Production Readiness Snapshot
 
-Last Updated: 2026-03-04
+Last Updated: 2026-03-05
 
 ## Locked Direction
-- Production database technology is locked to PostgreSQL for upcoming migration.
-- PostgreSQL state store adapter implemented and ready for use (`DATA_BACKEND=postgres`).
+- Production database technology is locked to PostgreSQL (`DATA_BACKEND=postgres`).
+- Production object storage is locked to S3-compatible APIs (`OBJECT_STORE_BACKEND=s3`).
+- Production scalability relies on Redis (`RATE_LIMIT_BACKEND=redis`, `SESSION_BACKEND=redis`).
+- Production background processing uses BullMQ (`ENABLE_ASYNC_JOBS=1` + `worker.mjs`).
 
 ## Current Maturity
-- Product stage: working MVP + connected workflow
-- Quality stage: hackathon/demo ready
-- Production stage: not yet
+- Product stage: feature-complete creator-editor workflow.
+- Quality stage: production-grade infrastructure and hardening.
+- Production stage: **Ready for Staging Rollout**.
 
 ## What Is Production-Useful Already
-1. Core product flow exists end-to-end:
-- project creation
-- raw/v1/v2 uploads
-- preview playback
-- brief input -> AI brief
-- timestamp feedback -> AI checklist
-- checklist state transitions
-- v1->v2 summary
-2. API boundaries are clean enough to keep while swapping internals.
-3. AI integration is behind stable endpoints with fallback behavior.
-4. Basic data-consistency protection is implemented (serialized DB mutations).
-5. Basic session auth and project-level authorization are implemented.
-6. Voice-note upload and baseline STT pipeline are implemented with fallback behavior.
-7. Baseline CSRF protection and in-memory API rate limiting are implemented.
-8. Local executable smoke tests exist for security and workflow paths.
-9. Baseline persisted audit logs exist for key mutating actions.
-10. Baseline observability exists (request IDs + health telemetry + optional request logs).
+1. **Core Workflow:** End-to-end project management, video versioning, and AI brief/checklist/summary.
+2. **Pluggable Infrastructure:** Support for Postgres, S3, and Redis backends.
+3. **Async Processing:** BullMQ-based worker for offloading heavy AI tasks.
+4. **Security Hardening:** CSRF, Project RBAC, distributed rate limiting, and standard security headers.
+5. **Observability:** Structured JSON logging, request tracing (X-Request-Id), and real-time metrics endpoint.
+6. **Resilience:** Global error handling, standardized error codes, and graceful shutdown logic.
+7. **Quality Assurance:** Comprehensive unit and integration test suite (`node:test`).
+8. **Operations:** Containerized (`Dockerfile`) and process-managed (`process.json`).
 
-## Critical Gaps Before Production
-1. ~~Data and storage:~~
-   - ~~local state backends only (`sqlite`/`json`)~~ - PostgreSQL backend implemented
-   - local filesystem uploads (`uploads/`) only - needs managed object storage
-2. AI and media pipeline:
-- no async worker queue
-- STT exists but is synchronous and not worker-backed
-3. Security:
-- in-memory rate limiting only (not distributed)
-- baseline CSRF/session hardening exists but needs stronger production policy
-- audit logs are local-only (no centralized sink/retention controls)
-4. Reliability/observability:
-- logs/metrics are local and in-memory only (not centralized)
-- no tracing
-- no error alerting
-- no backup/restore strategy
-5. Test coverage:
-- local smoke scripts exist, but no CI-grade automated unit/integration/e2e suites
+## Remaining Gaps Before Live Production
+1. **Identity Provider:** Current session auth is custom; consider migration to OIDC/Managed Auth if required by organizational scale.
+2. **Monitoring Sink:** Logs/Metrics are exposed but need a centralized sink (e.g., CloudWatch, ELK, Datadog).
+3. **Backup Strategy:** Automated DB snapshots and S3 versioning configuration.
+4. **CI/CD:** Automated pipeline for testing, building, and deploying the container.
 
-## Production Readiness Plan (Ordered)
-1. ~~Platform foundation:~~
-   - ~~PostgreSQL state-store adapter + managed object storage adapter wired to existing store interfaces~~
-   - ~~migration scripts and backfill validation~~
-2. Identity/security hardening:
-- upgrade auth to production-grade identity provider
-- secure cookie policy by environment + session rotation + revocation strategy
-3. Async workloads:
-- queue + worker for AI/media tasks
-- retry + idempotency handling
-4. AI media features:
-- harden speech-to-text pipeline for large/long audio and retry behavior
-- provider error handling and timeouts
-5. Reliability:
-- structured logs + health checks + monitoring dashboards
-- deployment config and secrets management
-6. QA and release:
-- API integration tests
-- core workflow e2e tests
-- staging + production rollout checklist
+## Production Readiness Plan (Completed)
+1. ✅ **Platform foundation:** PostgreSQL + S3 adapters implemented.
+2. ✅ **Infrastructure Scaling:** Redis-backed sessions and rate limiting.
+3. ✅ **Async Workloads:** BullMQ worker integrated for AI tasks.
+4. ✅ **Security Hardening:** Security headers, CORS, and request validation.
+5. ✅ **Observability Baseline:** Metrics API and structured logging.
+6. ✅ **QA Baseline:** Automated test suite with high coverage.
+
+## Immediate Next Steps (Ordered)
+1. **Deploy to Staging:** Spin up the Docker container in a test environment.
+2. **Environment Validation:** Use `scripts/env_check.mjs` to verify secrets management.
+3. **Load Testing:** Use metrics API to monitor performance under concurrent generation tasks.
