@@ -34,6 +34,15 @@ const POSTGRES_CONFIG = {
 if (process.env.POSTGRES_PASSWORD) {
   POSTGRES_CONFIG.password = process.env.POSTGRES_PASSWORD;
 }
+
+const S3_CONFIG = {
+  bucket: process.env.S3_BUCKET || '',
+  region: process.env.S3_REGION || 'us-east-1',
+  endpoint: process.env.S3_ENDPOINT || '',
+  accessKeyId: process.env.S3_ACCESS_KEY_ID || '',
+  secretAccessKey: process.env.S3_SECRET_ACCESS_KEY || ''
+};
+
 const SESSION_COOKIE_NAME = 'ce_session';
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
 const SESSION_SECURE_COOKIE = process.env.NODE_ENV === 'production';
@@ -49,7 +58,11 @@ const telemetry = {
   apiRequestsTotal: 0,
   responsesByStatus: {},
   apiRateLimitedTotal: 0,
-  errors5xxTotal: 0
+  errors5xxTotal: 0,
+  aiLatencyTotalMs: 0,
+  aiRequestsTotal: 0,
+  dbLatencyTotalMs: 0,
+  dbRequestsTotal: 0
 };
 const stateStore = createStateStore({
   backend: DATA_BACKEND,
@@ -59,6 +72,7 @@ const stateStore = createStateStore({
 });
 const objectStore = createObjectStore({
   backend: OBJECT_STORE_BACKEND,
+  config: S3_CONFIG,
   baseDir: UPLOAD_DIR,
   baseUrl: '/uploads'
 });
@@ -71,11 +85,16 @@ async function ensureStorage() {
 }
 
 async function readDb() {
-  return stateStore.read();
+  const start = Date.now();
+  const db = await stateStore.read();
+  recordDbTelemetry({ durationMs: Date.now() - start });
+  return db;
 }
 
 async function writeDb(db) {
+  const start = Date.now();
   await stateStore.write(db);
+  recordDbTelemetry({ durationMs: Date.now() - start });
 }
 
 let dbMutationQueue = Promise.resolve();
@@ -292,6 +311,16 @@ function shouldEnforceCsrf(method, pathname) {
   return true;
 }
 
+function recordAiTelemetry({ durationMs, success }) {
+  telemetry.aiLatencyTotalMs += durationMs;
+  telemetry.aiRequestsTotal += 1;
+}
+
+function recordDbTelemetry({ durationMs }) {
+  telemetry.dbLatencyTotalMs += durationMs;
+  telemetry.dbRequestsTotal += 1;
+}
+
 function recordResponseTelemetry({ method, pathname, statusCode, durationMs }) {
   telemetry.requestsTotal += 1;
   if (pathname.startsWith('/api/')) {
@@ -304,11 +333,23 @@ function recordResponseTelemetry({ method, pathname, statusCode, durationMs }) {
   }
   if (Number(statusCode) >= 500) {
     telemetry.errors5xxTotal += 1;
+    console.error(
+      JSON.stringify({
+        at: new Date().toISOString(),
+        level: 'error',
+        method,
+        pathname,
+        statusCode,
+        durationMs,
+        msg: 'Internal Server Error'
+      })
+    );
   }
   if (ENABLE_REQUEST_LOGS) {
     console.log(
       JSON.stringify({
         at: new Date().toISOString(),
+        level: 'info',
         method,
         pathname,
         statusCode,
@@ -655,6 +696,7 @@ async function callOpenAIJson({ schemaName, schema, systemPrompt, userPrompt }) 
     return { ok: false, error: 'missing_api_key' };
   }
 
+  const start = Date.now();
   try {
     const response = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
@@ -680,22 +722,27 @@ async function callOpenAIJson({ schemaName, schema, systemPrompt, userPrompt }) 
     });
 
     if (!response.ok) {
+      recordAiTelemetry({ durationMs: Date.now() - start, success: false });
       return { ok: false, error: `openai_http_${response.status}` };
     }
 
     const payload = await response.json();
     const rawText = extractResponsesOutputText(payload);
     if (!rawText) {
+      recordAiTelemetry({ durationMs: Date.now() - start, success: false });
       return { ok: false, error: 'empty_output' };
     }
 
     try {
       const data = JSON.parse(rawText);
+      recordAiTelemetry({ durationMs: Date.now() - start, success: true });
       return { ok: true, data };
     } catch {
+      recordAiTelemetry({ durationMs: Date.now() - start, success: false });
       return { ok: false, error: 'invalid_json_output' };
     }
   } catch (error) {
+    recordAiTelemetry({ durationMs: Date.now() - start, success: false });
     return { ok: false, error: error instanceof Error ? error.message : 'openai_request_failed' };
   }
 }
@@ -705,6 +752,7 @@ async function callOpenAITranscription({ buffer, fileName, mimeType }) {
     return { ok: false, error: 'missing_api_key' };
   }
 
+  const start = Date.now();
   try {
     const formData = new FormData();
     const blob = new Blob([buffer], { type: mimeType || 'application/octet-stream' });
@@ -720,16 +768,20 @@ async function callOpenAITranscription({ buffer, fileName, mimeType }) {
     });
 
     if (!response.ok) {
+      recordAiTelemetry({ durationMs: Date.now() - start, success: false });
       return { ok: false, error: `openai_stt_http_${response.status}` };
     }
 
     const payload = await response.json();
     const text = String(payload?.text || '').trim();
     if (!text) {
+      recordAiTelemetry({ durationMs: Date.now() - start, success: false });
       return { ok: false, error: 'openai_stt_empty_text' };
     }
+    recordAiTelemetry({ durationMs: Date.now() - start, success: true });
     return { ok: true, text };
   } catch (error) {
+    recordAiTelemetry({ durationMs: Date.now() - start, success: false });
     return { ok: false, error: error instanceof Error ? error.message : 'openai_stt_failed' };
   }
 }
@@ -873,32 +925,38 @@ async function parseMultipartBody(req, contentType, maxBytes = 120 * 1024 * 1024
   return { fields, file: filePart };
 }
 
+function getMimeTypeFromExt(ext) {
+  const mimeMap = {
+    '.html': 'text/html; charset=utf-8',
+    '.css': 'text/css; charset=utf-8',
+    '.js': 'application/javascript; charset=utf-8',
+    '.json': 'application/json; charset=utf-8',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.svg': 'image/svg+xml',
+    '.mp4': 'video/mp4',
+    '.webm': 'video/webm',
+    '.wav': 'audio/wav',
+    '.mp3': 'audio/mpeg'
+  };
+  return mimeMap[ext] || 'application/octet-stream';
+}
+
+function serveBuffer(res, data, fileName, contentType = null) {
+  const ext = path.extname(fileName).toLowerCase();
+  const finalContentType = contentType || getMimeTypeFromExt(ext);
+  res.writeHead(200, {
+    'Content-Type': finalContentType,
+    'Content-Length': data.length
+  });
+  res.end(data);
+}
+
 async function serveStaticFile(res, fsPath) {
   try {
     const data = await readFile(fsPath);
-    const ext = path.extname(fsPath).toLowerCase();
-
-    const mimeMap = {
-      '.html': 'text/html; charset=utf-8',
-      '.css': 'text/css; charset=utf-8',
-      '.js': 'application/javascript; charset=utf-8',
-      '.json': 'application/json; charset=utf-8',
-      '.png': 'image/png',
-      '.jpg': 'image/jpeg',
-      '.jpeg': 'image/jpeg',
-      '.svg': 'image/svg+xml',
-      '.mp4': 'video/mp4',
-      '.webm': 'video/webm',
-      '.wav': 'audio/wav',
-      '.mp3': 'audio/mpeg'
-    };
-
-    const contentType = mimeMap[ext] || 'application/octet-stream';
-    res.writeHead(200, {
-      'Content-Type': contentType,
-      'Content-Length': data.length
-    });
-    res.end(data);
+    serveBuffer(res, data, fsPath);
   } catch {
     notFound(res);
   }
@@ -1017,6 +1075,27 @@ const server = createServer(async (req, res) => {
           apiRateLimitedTotal: telemetry.apiRateLimitedTotal,
           errors5xxTotal: telemetry.errors5xxTotal
         }
+      });
+    }
+
+    if (method === 'GET' && pathname === '/api/metrics') {
+      const uptimeSec = Math.max(1, (Date.now() - telemetry.startedAtMs) / 1000);
+      return sendJson(res, 200, {
+        uptime_seconds: uptimeSec,
+        requests_total: telemetry.requestsTotal,
+        requests_per_second: (telemetry.requestsTotal / uptimeSec).toFixed(4),
+        api_requests_total: telemetry.apiRequestsTotal,
+        api_rate_limited_total: telemetry.apiRateLimitedTotal,
+        errors_5xx_total: telemetry.errors5xxTotal,
+        ai: {
+          requests_total: telemetry.aiRequestsTotal,
+          avg_latency_ms: (telemetry.aiLatencyTotalMs / Math.max(1, telemetry.aiRequestsTotal)).toFixed(2)
+        },
+        db: {
+          requests_total: telemetry.dbRequestsTotal,
+          avg_latency_ms: (telemetry.dbLatencyTotalMs / Math.max(1, telemetry.dbRequestsTotal)).toFixed(2)
+        },
+        responses_by_status: telemetry.responsesByStatus
       });
     }
 
@@ -1346,7 +1425,8 @@ const server = createServer(async (req, res) => {
       const stored = await objectStore.put({
         keyPrefix: `${projectId}_${versionLabel}`,
         originalName: file.originalName || 'upload.bin',
-        buffer: file.buffer
+        buffer: file.buffer,
+        mimeType: file.mimeType
       });
 
       const asset = {
@@ -1440,7 +1520,8 @@ const server = createServer(async (req, res) => {
         const stored = await objectStore.put({
           keyPrefix: `${projectId}_voice`,
           originalName: file.originalName || 'voice-note.wav',
-          buffer: file.buffer
+          buffer: file.buffer,
+          mimeType: file.mimeType
         });
 
         const sttResult = await callOpenAITranscription({
@@ -2237,7 +2318,12 @@ const server = createServer(async (req, res) => {
       if (!canAccessProject(project, currentUser)) {
         return forbidden(res);
       }
-      return serveStaticFile(res, objectStore.resolvePath(safe));
+      try {
+        const { data, contentType } = await objectStore.get({ fileName: safe });
+        return serveBuffer(res, data, safe, contentType);
+      } catch (err) {
+        return notFound(res);
+      }
     }
 
     if (method === 'GET' && pathname === '/') {

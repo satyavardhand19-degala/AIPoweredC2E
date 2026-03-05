@@ -5,11 +5,13 @@
   "type": "module",
   "description": "AI-powered workflow demo for short-form video creators and editors",
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1002.0",
     "pg": "^8.11.3"
   },
   "scripts": {
     "dev": "node server.mjs",
     "start": "node server.mjs",
+    "test": "node --test test/*.test.mjs",
     "test:security": "node scripts/security_smoke_test.mjs",
     "test:workflow": "node scripts/workflow_smoke_test.mjs"
   }

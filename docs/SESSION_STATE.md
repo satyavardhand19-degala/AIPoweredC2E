@@ -8,13 +8,13 @@ Last Updated: 2026-03-04
 - On resume, priority is implementing PostgreSQL state-store adapter and switching default production path to PostgreSQL.
 
 ## Current Phase
-Phase 3.6: Observability baseline implemented (request IDs + telemetry + health diagnostics).
+Phase 3.7: Managed persistence and observability hooks (S3 + Postgres-ready + Metrics + Structured Tests).
 
 ## Immediate Next Task
-Phase 3.7 start point:
-1. Add PostgreSQL state-store adapter + managed object storage adapter behind existing interfaces.
-2. Add deploy-ready observability hooks (structured metrics, centralized logs, alerts).
-3. Expand test suite from smoke scripts to CI-grade integration/e2e cases.
+Phase 3.8 start point:
+1. Implement distributed rate limiting (Redis-backed) or move to managed WAF.
+2. Add background job queue (e.g., BullMQ) for AI and media tasks.
+3. Secure cookie rotation and session revocation strategy.
 
 ## What Is Completed
 1. Problem statement read and decoded from local PDF.
@@ -74,6 +74,13 @@ Phase 3.7 start point:
 - Added in-memory request telemetry counters (traffic, rate-limit hits, 5xx counts)
 - Enriched `/api/health` with uptime, backend info, and telemetry snapshot
 - Added optional structured request logging via `ENABLE_REQUEST_LOGS=1`
+14. Phase 3.7 managed persistence and observability hooks completed:
+- Added S3 object-store adapter (`S3ObjectStore`) with proxy retrieval
+- Added `GET /api/metrics` with request/ai/db telemetry and latencies
+- Enriched request logs with `level` and `msg` fields
+- Added structured unit/integration test suite using `node:test` (`npm test`)
+- Updated `package.json` with `@aws-sdk/client-s3` and test scripts
+- Updated `server.mjs` to use `objectStore.get()` and enriched telemetry hooks
 
 ## Next Build Phase
 Phase 3: Production-grade integrations.
