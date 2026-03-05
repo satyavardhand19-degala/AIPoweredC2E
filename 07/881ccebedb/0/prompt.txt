@@ -1,0 +1,13 @@
+read the docs directory check for the resume session file continue the remaining work
+
+---
+
+run tests
+
+---
+
+commit all the changes
+
+---
+
+update the session histroy doc and continue with the remaianing part of the project to be production ready
