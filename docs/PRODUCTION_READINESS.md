@@ -25,19 +25,20 @@ Last Updated: 2026-03-05
 
 ## Remaining Gaps Before Live Production
 1. **Identity Provider:** Current session auth is custom; consider migration to OIDC/Managed Auth if required by organizational scale.
-2. **Monitoring Sink:** Logs/Metrics are exposed but need a centralized sink (e.g., CloudWatch, ELK, Datadog).
-3. **Backup Strategy:** Automated DB snapshots and S3 versioning configuration.
-4. **CI/CD:** Automated pipeline for testing, building, and deploying the container.
+2. **Backup Strategy:** Automated DB snapshots and S3 versioning configuration.
 
 ## Production Readiness Plan (Completed)
 1. ✅ **Platform foundation:** PostgreSQL + S3 adapters implemented.
 2. ✅ **Infrastructure Scaling:** Redis-backed sessions and rate limiting.
 3. ✅ **Async Workloads:** BullMQ worker integrated for AI tasks.
 4. ✅ **Security Hardening:** Security headers, CORS, and request validation.
-5. ✅ **Observability Baseline:** Metrics API and structured logging.
+5. ✅ **Observability Baseline:** Metrics API, structured logging, and Prometheus config.
 6. ✅ **QA Baseline:** Automated test suite with high coverage.
+7. ✅ **CI/CD:** Automated pipeline for testing, building, and deploying the container (`.github/workflows/ci.yml`).
+8. ✅ **Monitoring Sink:** Prometheus configuration and Kubernetes rollout templates setup.
+9. ✅ **Staging Environment:** Local staging test environment available (`docker-compose.yml`).
 
 ## Immediate Next Steps (Ordered)
-1. **Deploy to Staging:** Spin up the Docker container in a test environment.
-2. **Environment Validation:** Use `scripts/env_check.mjs` to verify secrets management.
-3. **Load Testing:** Use metrics API to monitor performance under concurrent generation tasks.
+1. **Deploy to Production:** Apply the Kubernetes manifests in `k8s/` and connect to the monitored metrics endpoint.
+2. **Configure Identity Providers:** Shift to an OIDC provider if custom identity is outgrown.
+3. **Configure Backup Plans:** Ensure RDS backups and S3 bucket versioning is active.

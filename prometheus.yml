@@ -1,0 +1,9 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'creator-editor-ai-workflow'
+    metrics_path: '/api/health' # Assuming health endpoint exposes metrics
+    static_configs:
+      - targets: ['app:3000']
