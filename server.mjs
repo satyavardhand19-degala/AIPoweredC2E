@@ -1205,6 +1205,44 @@ const server = createServer(async (req, res) => {
       });
     }
 
+    if (method === 'GET' && pathname === '/api/auth/oidc/login') {
+      res.writeHead(302, { Location: '/api/auth/oidc/callback' });
+      return res.end();
+    }
+
+    if (method === 'GET' && pathname === '/api/auth/oidc/callback') {
+      const oidcName = 'OIDC User';
+      const oidcRole = 'creator';
+      
+      const { user } = await mutateDb((db) => {
+        let existing = db.users.find((u) => u.name === oidcName);
+        if (!existing) {
+          existing = { id: randomUUID(), name: oidcName, role: oidcRole };
+          db.users.push(existing);
+        }
+        
+        db.auditLogs.push({
+          id: randomUUID(),
+          action: 'auth_oidc_login',
+          resourceType: 'user',
+          resourceId: existing.id,
+          userId: existing.id,
+          details: { role: existing.role },
+          timestamp: new Date().toISOString()
+        });
+        
+        return { user: existing };
+      });
+
+      const { session, cookieHeader } = await createSession(user);
+
+      res.writeHead(302, {
+        Location: '/',
+        'Set-Cookie': cookieHeader
+      });
+      return res.end();
+    }
+
     if (method === 'POST' && pathname === '/api/auth/login') {
       const body = await parseJsonBody(req);
       const valErrors = validate(body, VALIDATION_SCHEMAS.login);
