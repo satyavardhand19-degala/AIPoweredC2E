@@ -53,6 +53,22 @@ async function apiRequest(path, { method = 'GET', body, cookie = '', csrf = '', 
   return { status: res.status, headers: res.headers, data };
 }
 
+async function registerUser({ name, email, password, role }) {
+  return apiRequest('/api/auth/register', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name, email, password, role })
+  });
+}
+
+async function loginUser({ identifier, password, role }) {
+  return apiRequest('/api/auth/login', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ identifier, password, role })
+  });
+}
+
 test('API Integration', async (t) => {
   let serverProc;
 
@@ -94,37 +110,61 @@ test('API Integration', async (t) => {
 
   await t.test('Auth Flow', async () => {
     const unique = Date.now();
-    const loginRes = await apiRequest('/api/auth/login', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name: `User_${unique}`, role: 'creator' })
+    const registerRes = await registerUser({
+      name: `User_${unique}`,
+      email: `user_${unique}@example.com`,
+      password: 'Password123',
+      role: 'creator'
     });
-    assert.equal(loginRes.status, 200);
-    assert.ok(loginRes.data.csrfToken);
-    assert.ok(loginRes.headers.get('set-cookie'));
+    assert.equal(registerRes.status, 201);
+    assert.ok(registerRes.data.csrfToken);
+    assert.ok(registerRes.data.user.profileId);
+    assert.ok(registerRes.headers.get('set-cookie'));
 
-    const cookie = parseCookie(loginRes.headers.get('set-cookie'));
+    const cookie = parseCookie(registerRes.headers.get('set-cookie'));
     const me = await apiRequest('/api/auth/me', { cookie });
     assert.equal(me.status, 200);
     assert.equal(me.data.user.name, `User_${unique}`);
+    assert.equal(me.data.user.email, `user_${unique}@example.com`);
+    assert.equal(me.data.user.role, 'creator');
+
+    const loginRes = await loginUser({
+      identifier: `user_${unique}@example.com`,
+      password: 'Password123',
+      role: 'creator'
+    });
+    assert.equal(loginRes.status, 200);
+    assert.equal(loginRes.data.user.name, `User_${unique}`);
   });
 
-  await t.test('Project Creation and Access', async () => {
+  await t.test('Project Creation, Connection, and Access', async () => {
     const unique = Date.now();
-    const creator = await apiRequest('/api/auth/login', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name: `Creator_${unique}`, role: 'creator' })
+    const creator = await registerUser({
+      name: `Creator_${unique}`,
+      email: `creator_${unique}@example.com`,
+      password: 'Password123',
+      role: 'creator'
     });
     const creatorCookie = parseCookie(creator.headers.get('set-cookie'));
     const creatorCsrf = creator.data.csrfToken;
 
-    const editor = await apiRequest('/api/auth/login', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name: `Editor_${unique}`, role: 'editor' })
+    const editor = await registerUser({
+      name: `Editor_${unique}`,
+      email: `editor_${unique}@example.com`,
+      password: 'Password123',
+      role: 'editor'
     });
     const editorCookie = parseCookie(editor.headers.get('set-cookie'));
+    const editorCsrf = editor.data.csrfToken;
+
+    const connection = await apiRequest('/api/connections', {
+      method: 'POST',
+      cookie: editorCookie,
+      csrf: editorCsrf,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ creatorId: creator.data.user.profileId })
+    });
+    assert.equal(connection.status, 201);
 
     const createRes = await apiRequest('/api/projects', {
       method: 'POST',
@@ -133,8 +173,7 @@ test('API Integration', async (t) => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         title: 'Integration Test Project',
-        creatorName: creator.data.user.name,
-        editorName: editor.data.user.name
+        editorUserId: editor.data.user.id
       })
     });
     assert.equal(createRes.status, 201);
@@ -152,15 +191,61 @@ test('API Integration', async (t) => {
     assert.equal(editorContext.status, 200);
 
     // Forbidden access
-    const randomUser = await apiRequest('/api/auth/login', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name: `Other_${unique}`, role: 'creator' })
+    const randomUser = await registerUser({
+      name: `Other_${unique}`,
+      email: `other_${unique}@example.com`,
+      password: 'Password123',
+      role: 'creator'
     });
     const otherCookie = parseCookie(randomUser.headers.get('set-cookie'));
     const otherContext = await apiRequest(`/api/projects/${projectId}/context`, {
       cookie: otherCookie
     });
     assert.equal(otherContext.status, 403);
+  });
+
+  await t.test('Role-Based Page Protection', async () => {
+    const unique = Date.now();
+    const creator = await registerUser({
+      name: `RouteCreator_${unique}`,
+      email: `route_creator_${unique}@example.com`,
+      password: 'Password123',
+      role: 'creator'
+    });
+    const creatorCookie = parseCookie(creator.headers.get('set-cookie'));
+
+    const editor = await registerUser({
+      name: `RouteEditor_${unique}`,
+      email: `route_editor_${unique}@example.com`,
+      password: 'Password123',
+      role: 'editor'
+    });
+    const editorCookie = parseCookie(editor.headers.get('set-cookie'));
+
+    const creatorDashboard = await fetch(`${BASE}/creator-dashboard`, {
+      headers: { Cookie: creatorCookie },
+      redirect: 'manual'
+    });
+    assert.equal(creatorDashboard.status, 200);
+
+    const creatorToEditor = await fetch(`${BASE}/editor-dashboard`, {
+      headers: { Cookie: creatorCookie },
+      redirect: 'manual'
+    });
+    assert.equal(creatorToEditor.status, 302);
+    assert.equal(creatorToEditor.headers.get('location'), '/creator-dashboard');
+
+    const editorDashboard = await fetch(`${BASE}/editor-dashboard`, {
+      headers: { Cookie: editorCookie },
+      redirect: 'manual'
+    });
+    assert.equal(editorDashboard.status, 200);
+
+    const editorToCreator = await fetch(`${BASE}/creator-dashboard`, {
+      headers: { Cookie: editorCookie },
+      redirect: 'manual'
+    });
+    assert.equal(editorToCreator.status, 302);
+    assert.equal(editorToCreator.headers.get('location'), '/editor-dashboard');
   });
 });

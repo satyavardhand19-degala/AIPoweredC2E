@@ -381,7 +381,7 @@ async function processSummaryGeneration(job) {
   return { ok: true, type: 'summary' };
 }
 
-const worker = createWorker('ai-tasks', async (job) => {
+const worker = await createWorker('ai-tasks', async (job) => {
   console.log(`Processing job ${job.id} of type ${job.name}`);
   if (job.name === 'generate-brief') {
     return processBriefGeneration(job);

@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
 import { mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,8 +14,8 @@ const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '127.0.0.1';
 
 const PUBLIC_DIR = path.join(__dirname, 'public');
-const DATA_DIR = path.join(__dirname, 'data');
-const UPLOAD_DIR = path.join(__dirname, 'uploads');
+const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(__dirname, 'data');
+const UPLOAD_DIR = process.env.UPLOAD_DIR ? path.resolve(process.env.UPLOAD_DIR) : path.join(__dirname, 'uploads');
 const DATA_JSON_FILE = path.join(DATA_DIR, 'db.json');
 const DATA_SQLITE_FILE = path.join(DATA_DIR, 'app_state.db');
 const DATA_BACKEND = process.env.DATA_BACKEND || (process.env.NODE_ENV === 'production' ? 'postgres' : 'sqlite');
@@ -137,8 +137,38 @@ const sessionStore = createSessionStore({
 async function ensureStorage() {
   await mkdir(PUBLIC_DIR, { recursive: true });
   await mkdir(DATA_DIR, { recursive: true });
+  await mkdir(UPLOAD_DIR, { recursive: true });
   await stateStore.init();
   await objectStore.init();
+}
+
+async function migrateLegacyState() {
+  await mutateDb((db) => {
+    if (!Array.isArray(db.connections)) {
+      db.connections = [];
+    }
+
+    for (const user of db.users) {
+      if (!user.roleProfileId && user.role) {
+        user.roleProfileId = makeRoleProfileId(db, user.role);
+      }
+      if (user.email) {
+        user.email = normalizeEmail(user.email);
+      }
+      if (user.name) {
+        user.name = sanitizeDisplayName(user.name);
+      }
+      if (!user.createdAt) {
+        user.createdAt = new Date().toISOString();
+      }
+    }
+
+    for (const project of db.projects) {
+      if (!project.createdAt) {
+        project.createdAt = new Date().toISOString();
+      }
+    }
+  });
 }
 
 
@@ -191,6 +221,12 @@ function sendError(res, status, code, message, details = null) {
   });
 }
 
+function redirect(res, location, status = 302) {
+  applySecurityHeaders(res);
+  res.writeHead(status, { Location: location });
+  res.end();
+}
+
 function notFound(res) {
   sendError(res, 404, 'NOT_FOUND', 'The requested resource was not found');
 }
@@ -211,11 +247,23 @@ function safeLower(value) {
   return String(value || '').trim().toLowerCase();
 }
 
+function normalizeEmail(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function normalizeIdentifier(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
 function normalizeName(value) {
   return String(value || '')
     .trim()
     .replace(/\s+/g, ' ')
     .toLowerCase();
+}
+
+function sanitizeDisplayName(value) {
+  return String(value || '').trim().replace(/\s+/g, ' ');
 }
 
 function parseCookies(req) {
@@ -263,6 +311,126 @@ function findUserByNameAndRole(db, name, role) {
   return db.users.find((user) => normalizeName(user.name) === nameKey && safeLower(user.role) === roleKey);
 }
 
+function findUserByIdentifier(db, identifier) {
+  const key = normalizeIdentifier(identifier);
+  if (!key) {
+    return null;
+  }
+  return (
+    db.users.find((user) => normalizeEmail(user.email) === key) ||
+    db.users.find((user) => normalizeName(user.name) === key) ||
+    null
+  );
+}
+
+function makeRoleProfileId(db, role) {
+  const prefix = safeLower(role) === 'creator' ? 'CR' : 'ED';
+  let candidate = '';
+  do {
+    candidate = `${prefix}-${randomBytes(3).toString('hex').toUpperCase()}`;
+  } while (db.users.some((user) => user.roleProfileId === candidate));
+  return candidate;
+}
+
+function hashPassword(password, salt = randomBytes(16).toString('hex')) {
+  const normalizedPassword = String(password || '');
+  const hash = scryptSync(normalizedPassword, salt, 64).toString('hex');
+  return { salt, hash };
+}
+
+function verifyPassword(password, user) {
+  if (!user?.passwordHash || !user?.passwordSalt) {
+    return false;
+  }
+  const candidate = scryptSync(String(password || ''), user.passwordSalt, 64);
+  const existing = Buffer.from(user.passwordHash, 'hex');
+  if (candidate.length !== existing.length) {
+    return false;
+  }
+  return timingSafeEqual(candidate, existing);
+}
+
+function formatUser(user) {
+  if (!user) {
+    return null;
+  }
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    profileId: user.roleProfileId
+  };
+}
+
+function roleDashboardPath(role) {
+  return safeLower(role) === 'creator' ? '/creator-dashboard' : '/editor-dashboard';
+}
+
+function roleLabel(role) {
+  return safeLower(role) === 'creator' ? 'Creator ID' : 'Editor ID';
+}
+
+function connectionExists(db, creatorUserId, editorUserId) {
+  return db.connections.some((item) => item.creatorUserId === creatorUserId && item.editorUserId === editorUserId);
+}
+
+function getConnectedEditors(db, creatorUserId) {
+  return db.connections
+    .filter((item) => item.creatorUserId === creatorUserId)
+    .map((item) => {
+      const editor = db.users.find((user) => user.id === item.editorUserId && safeLower(user.role) === 'editor');
+      return editor
+        ? {
+            connectionId: item.id,
+            connectedAt: item.createdAt,
+            user: formatUser(editor)
+          }
+        : null;
+    })
+    .filter(Boolean);
+}
+
+function getConnectedCreators(db, editorUserId) {
+  return db.connections
+    .filter((item) => item.editorUserId === editorUserId)
+    .map((item) => {
+      const creator = db.users.find((user) => user.id === item.creatorUserId && safeLower(user.role) === 'creator');
+      return creator
+        ? {
+            connectionId: item.id,
+            connectedAt: item.createdAt,
+            user: formatUser(creator)
+          }
+        : null;
+    })
+    .filter(Boolean);
+}
+
+function summarizeConnections(db, user) {
+  if (!user) {
+    return [];
+  }
+  return safeLower(user.role) === 'creator'
+    ? getConnectedEditors(db, user.id)
+    : getConnectedCreators(db, user.id);
+}
+
+async function createSession(user) {
+  const session = await sessionStore.create({
+    userId: user.id,
+    ttlSeconds: SESSION_TTL_SECONDS
+  });
+  const cookieHeader = buildCookie(SESSION_COOKIE_NAME, session.token, {
+    maxAge: SESSION_TTL_SECONDS,
+    path: '/',
+    httpOnly: true,
+    sameSite: 'Lax',
+    secure: SESSION_SECURE_COOKIE
+  });
+  return { session, cookieHeader };
+}
+
 function getSessionToken(req) {
   const cookies = parseCookies(req);
   return cookies[SESSION_COOKIE_NAME] || '';
@@ -285,11 +453,7 @@ async function getCurrentUserFromDb(req, db) {
   if (!user) {
     return null;
   }
-  return {
-    id: user.id,
-    name: user.name,
-    role: user.role
-  };
+  return formatUser(user);
 }
 
 async function getCurrentAuthContext(req, db) {
@@ -302,11 +466,7 @@ async function getCurrentAuthContext(req, db) {
     return null;
   }
   return {
-    user: {
-      id: user.id,
-      name: user.name,
-      role: user.role
-    },
+    user: formatUser(user),
     session
   };
 }
@@ -349,7 +509,7 @@ function shouldEnforceCsrf(method, pathname) {
   if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
     return false;
   }
-  if (pathname === '/api/auth/login') {
+  if (pathname === '/api/auth/login' || pathname === '/api/auth/register') {
     return false;
   }
   return true;
@@ -407,14 +567,19 @@ function canAccessProject(project, user) {
   if (!project || !user) {
     return false;
   }
-  if (project.creatorUserId && project.creatorUserId === user.id) {
-    return true;
+  if (safeLower(user.role) === 'creator') {
+    if (project.creatorUserId) {
+      return project.creatorUserId === user.id;
+    }
+    return normalizeName(project.creatorName) === normalizeName(user.name);
   }
-  if (project.editorUserId && project.editorUserId === user.id) {
-    return true;
+  if (safeLower(user.role) === 'editor') {
+    if (project.editorUserId) {
+      return project.editorUserId === user.id;
+    }
+    return normalizeName(project.editorName) === normalizeName(user.name);
   }
-  const userName = normalizeName(user.name);
-  return userName === normalizeName(project.creatorName) || userName === normalizeName(project.editorName);
+  return false;
 }
 
 function extractProjectIdFromAssetFileName(fileName) {
@@ -841,9 +1006,13 @@ function projectSummary(project, db) {
   const comments = db.comments.filter((item) => item.projectId === project.id);
   const checklistItems = db.checklistItems.filter((item) => item.projectId === project.id);
   const briefs = db.briefs.filter((item) => item.projectId === project.id);
+  const creator = db.users.find((user) => user.id === project.creatorUserId);
+  const editor = db.users.find((user) => user.id === project.editorUserId);
 
   return {
     ...project,
+    creatorProfileId: creator?.roleProfileId || null,
+    editorProfileId: editor?.roleProfileId || null,
     assets,
     metrics: {
       commentsCount: comments.length,
@@ -874,14 +1043,27 @@ function updateProjectStatusFromChecklist(projectId, db) {
 }
 
 const VALIDATION_SCHEMAS = {
+  register: {
+    name: { type: 'string', min: 2, max: 60, required: true },
+    email: { type: 'string', min: 5, max: 120, required: true },
+    password: { type: 'string', min: 8, max: 200, required: true },
+    role: { type: 'string', enum: ['creator', 'editor'], required: true }
+  },
   login: {
-    name: { type: 'string', min: 1, max: 50, required: true },
+    identifier: { type: 'string', min: 1, max: 120, required: true },
+    password: { type: 'string', min: 8, max: 200, required: true },
     role: { type: 'string', enum: ['creator', 'editor'], required: true }
   },
   createProject: {
     title: { type: 'string', min: 3, max: 100, required: true },
-    creatorName: { type: 'string', min: 1, max: 50, required: true },
-    editorName: { type: 'string', min: 1, max: 50, required: true }
+    editorUserId: { type: 'string', min: 0, max: 80, required: false },
+    editorName: { type: 'string', min: 0, max: 50, required: false }
+  },
+  assignProjectEditor: {
+    editorUserId: { type: 'string', min: 0, max: 80, required: false }
+  },
+  connectCreator: {
+    creatorId: { type: 'string', min: 3, max: 40, required: true }
   },
   createBriefInput: {
     inputType: { type: 'string', enum: ['text', 'voice', 'url'], required: true },
@@ -1145,6 +1327,54 @@ const server = createServer(async (req, res) => {
       }
     }
 
+    if (method === 'GET' && pathname === '/') {
+      const db = await readDb();
+      const currentUser = await getCurrentUserFromDb(req, db);
+      return redirect(res, currentUser ? roleDashboardPath(currentUser.role) : '/login');
+    }
+
+    if (method === 'GET' && pathname === '/login') {
+      const db = await readDb();
+      const currentUser = await getCurrentUserFromDb(req, db);
+      if (currentUser) {
+        return redirect(res, roleDashboardPath(currentUser.role));
+      }
+      return serveStaticFile(res, path.join(PUBLIC_DIR, 'login.html'));
+    }
+
+    if (method === 'GET' && pathname === '/register') {
+      const db = await readDb();
+      const currentUser = await getCurrentUserFromDb(req, db);
+      if (currentUser) {
+        return redirect(res, roleDashboardPath(currentUser.role));
+      }
+      return serveStaticFile(res, path.join(PUBLIC_DIR, 'register.html'));
+    }
+
+    if (method === 'GET' && pathname === '/creator-dashboard') {
+      const db = await readDb();
+      const currentUser = await getCurrentUserFromDb(req, db);
+      if (!currentUser) {
+        return redirect(res, '/login');
+      }
+      if (safeLower(currentUser.role) !== 'creator') {
+        return redirect(res, roleDashboardPath(currentUser.role));
+      }
+      return serveStaticFile(res, path.join(PUBLIC_DIR, 'creator-dashboard.html'));
+    }
+
+    if (method === 'GET' && pathname === '/editor-dashboard') {
+      const db = await readDb();
+      const currentUser = await getCurrentUserFromDb(req, db);
+      if (!currentUser) {
+        return redirect(res, '/login');
+      }
+      if (safeLower(currentUser.role) !== 'editor') {
+        return redirect(res, roleDashboardPath(currentUser.role));
+      }
+      return serveStaticFile(res, path.join(PUBLIC_DIR, 'editor-dashboard.html'));
+    }
+
     if (method === 'GET' && pathname === '/api/health') {
       return sendJson(res, 200, {
         ok: true,
@@ -1201,7 +1431,9 @@ const server = createServer(async (req, res) => {
       const auth = await getCurrentAuthContext(req, db);
       return sendJson(res, 200, {
         user: auth?.user || null,
-        csrfToken: auth?.session?.csrfToken || null
+        csrfToken: auth?.session?.csrfToken || null,
+        roleLabel: auth?.user ? roleLabel(auth.user.role) : null,
+        connections: auth?.user ? summarizeConnections(db, auth.user) : []
       });
     }
 
@@ -1250,61 +1482,137 @@ const server = createServer(async (req, res) => {
         return badRequest(res, 'Validation failed', valErrors);
       }
 
-      const name = String(body.name).trim();
+      const identifier = String(body.identifier).trim();
+      const password = String(body.password || '');
       const role = safeLower(body.role);
+      const db = await readDb();
+      const user = findUserByIdentifier(db, identifier);
+      if (!user || safeLower(user.role) !== role || !verifyPassword(password, user)) {
+        return unauthorized(res, 'Invalid credentials');
+      }
 
-      const { user, createdUser } = await mutateDb((db) => {
-        let user = findUserByNameAndRole(db, name, role);
-        let createdUser = false;
-        if (!user) {
-          createdUser = true;
-          user = {
-            id: randomUUID(),
-            name,
-            role,
-            createdAt: new Date().toISOString()
-          };
-          db.users.push(user);
-        }
-        return { user, createdUser };
-      });
+      const { session, cookieHeader } = await createSession(user);
 
-      const session = await sessionStore.create({
-        userId: user.id,
-        ttlSeconds: SESSION_TTL_SECONDS
-      });
-
-      await mutateDb((db) => {
-        logAudit(db, {
+      await mutateDb((mutableDb) => {
+        logAudit(mutableDb, {
           action: 'auth.login',
           targetType: 'session',
           targetId: session.id,
-          user,
+          user: formatUser(user),
           req,
           meta: {
-            createdUser,
             role: user.role
           }
         });
-      });
-
-      const cookie = buildCookie(SESSION_COOKIE_NAME, session.token, {
-        maxAge: SESSION_TTL_SECONDS,
-        path: '/',
-        httpOnly: true,
-        sameSite: 'Lax',
-        secure: SESSION_SECURE_COOKIE
       });
 
       return sendJson(
         res,
         200,
         {
-          user: { id: user.id, name: user.name, role: user.role },
-          csrfToken: session.csrfToken
+          user: formatUser(user),
+          csrfToken: session.csrfToken,
+          redirectTo: roleDashboardPath(user.role)
         },
         {
-          'Set-Cookie': cookie
+          'Set-Cookie': cookieHeader
+        }
+      );
+    }
+
+    if (method === 'POST' && pathname === '/api/auth/register') {
+      const body = await parseJsonBody(req);
+      const valErrors = validate(body, VALIDATION_SCHEMAS.register);
+      if (valErrors) {
+        return badRequest(res, 'Validation failed', valErrors);
+      }
+
+      const name = sanitizeDisplayName(body.name);
+      const email = normalizeEmail(body.email);
+      const password = String(body.password || '');
+      const role = safeLower(body.role);
+
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return badRequest(res, 'Validation failed', ['email must be a valid email address']);
+      }
+
+      const passwordStrengthErrors = [];
+      if (!/[A-Z]/.test(password)) {
+        passwordStrengthErrors.push('password must include at least one uppercase letter');
+      }
+      if (!/[a-z]/.test(password)) {
+        passwordStrengthErrors.push('password must include at least one lowercase letter');
+      }
+      if (!/[0-9]/.test(password)) {
+        passwordStrengthErrors.push('password must include at least one number');
+      }
+      if (passwordStrengthErrors.length) {
+        return badRequest(res, 'Validation failed', passwordStrengthErrors);
+      }
+
+      const registration = await mutateDb((mutableDb) => {
+        if (mutableDb.users.some((entry) => normalizeEmail(entry.email) === email)) {
+          return { duplicate: 'email' };
+        }
+        if (mutableDb.users.some((entry) => normalizeName(entry.name) === normalizeName(name))) {
+          return { duplicate: 'name' };
+        }
+
+        const passwordData = hashPassword(password);
+        const user = {
+          id: randomUUID(),
+          name,
+          email,
+          role,
+          roleProfileId: makeRoleProfileId(mutableDb, role),
+          passwordHash: passwordData.hash,
+          passwordSalt: passwordData.salt,
+          createdAt: new Date().toISOString()
+        };
+        mutableDb.users.push(user);
+        logAudit(mutableDb, {
+          action: 'auth.register',
+          targetType: 'user',
+          targetId: user.id,
+          user: formatUser(user),
+          req,
+          meta: {
+            role: user.role,
+            profileId: user.roleProfileId
+          }
+        });
+        return { user };
+      });
+
+      if (registration?.duplicate === 'email') {
+        return badRequest(res, 'Validation failed', ['email is already registered']);
+      }
+      if (registration?.duplicate === 'name') {
+        return badRequest(res, 'Validation failed', ['name is already registered']);
+      }
+      const user = registration?.user;
+      if (!user) {
+        const latestDb = await readDb();
+        if (latestDb.users.some((entry) => normalizeEmail(entry.email) === email)) {
+          return badRequest(res, 'Validation failed', ['email is already registered']);
+        }
+        if (latestDb.users.some((entry) => normalizeName(entry.name) === normalizeName(name))) {
+          return badRequest(res, 'Validation failed', ['name is already registered']);
+        }
+        return sendError(res, 500, 'REGISTER_FAILED', 'Unable to create account');
+      }
+
+      const { session, cookieHeader } = await createSession(user);
+      return sendJson(
+        res,
+        201,
+        {
+          user: formatUser(user),
+          csrfToken: session.csrfToken,
+          redirectTo: roleDashboardPath(user.role)
+        },
+        {
+          'Set-Cookie': cookieHeader
         }
       );
     }
@@ -1345,6 +1653,85 @@ const server = createServer(async (req, res) => {
       );
     }
 
+    if (method === 'GET' && pathname === '/api/connections') {
+      const db = await readDb();
+      const currentUser = await getCurrentUserFromDb(req, db);
+      if (!currentUser) {
+        return unauthorized(res);
+      }
+      return sendJson(res, 200, {
+        connections: summarizeConnections(db, currentUser)
+      });
+    }
+
+    if (method === 'POST' && pathname === '/api/connections') {
+      const authDb = await readDb();
+      const currentUser = await getCurrentUserFromDb(req, authDb);
+      if (!currentUser) {
+        return unauthorized(res);
+      }
+      if (safeLower(currentUser.role) !== 'editor') {
+        return forbidden(res, 'Only editor users can connect to creators');
+      }
+
+      const body = await parseJsonBody(req);
+      const valErrors = validate(body, VALIDATION_SCHEMAS.connectCreator);
+      if (valErrors) {
+        return badRequest(res, 'Validation failed', valErrors);
+      }
+
+      const creatorId = String(body.creatorId || '').trim().toUpperCase();
+      const creator = authDb.users.find(
+        (user) => safeLower(user.role) === 'creator' && String(user.roleProfileId || '').toUpperCase() === creatorId
+      );
+      if (!creator) {
+        return notFound(res);
+      }
+      if (connectionExists(authDb, creator.id, currentUser.id)) {
+        return badRequest(res, 'You are already connected to this creator');
+      }
+
+      const created = await mutateDb((mutableDb) => {
+        const latestCreator = mutableDb.users.find((user) => user.id === creator.id);
+        const latestEditor = mutableDb.users.find((user) => user.id === currentUser.id);
+        if (!latestCreator || !latestEditor) {
+          return { missingUser: true };
+        }
+
+        const connection = {
+          id: randomUUID(),
+          creatorUserId: latestCreator.id,
+          editorUserId: latestEditor.id,
+          createdAt: new Date().toISOString()
+        };
+        mutableDb.connections.push(connection);
+        logAudit(mutableDb, {
+          action: 'connection.create',
+          targetType: 'connection',
+          targetId: connection.id,
+          user: currentUser,
+          req,
+          meta: {
+            creatorUserId: latestCreator.id,
+            creatorProfileId: latestCreator.roleProfileId
+          }
+        });
+        return {
+          connection: {
+            id: connection.id,
+            createdAt: connection.createdAt,
+            creator: formatUser(latestCreator),
+            editor: formatUser(latestEditor)
+          }
+        };
+      });
+
+      if (created.missingUser) {
+        return sendError(res, 409, 'CONNECTION_FAILED', 'Connection state changed, retry the request');
+      }
+      return sendJson(res, 201, created);
+    }
+
     if (method === 'GET' && pathname === '/api/projects') {
       const db = await readDb();
       const currentUser = await getCurrentUserFromDb(req, db);
@@ -1372,22 +1759,26 @@ const server = createServer(async (req, res) => {
       }
 
       const title = String(body.title).trim();
-      const creatorName = String(body.creatorName).trim();
-      const editorName = String(body.editorName).trim();
-
-      if (normalizeName(creatorName) !== normalizeName(currentUser.name)) {
-        return badRequest(res, 'creatorName must match logged-in creator');
-      }
+      const editorUserId = String(body.editorUserId || '').trim();
+      const editorName = sanitizeDisplayName(body.editorName || '');
 
       const created = await mutateDb((db) => {
-        const editorUser = findUserByNameAndRole(db, editorName, 'editor');
+        let editorUser = null;
+        if (editorUserId) {
+          editorUser = db.users.find((user) => user.id === editorUserId && safeLower(user.role) === 'editor') || null;
+        } else if (editorName) {
+          editorUser = findUserByNameAndRole(db, editorName, 'editor') || null;
+        }
+        if (editorUser && !connectionExists(db, currentUser.id, editorUser.id)) {
+          return { invalidConnection: true };
+        }
         const project = {
           id: randomUUID(),
           title,
           creatorName: currentUser.name,
-          editorName,
+          editorName: editorUser?.name || '',
           creatorUserId: currentUser.id,
-          editorUserId: editorUser ? editorUser.id : null,
+          editorUserId: editorUser?.id || null,
           status: 'draft',
           createdAt: new Date().toISOString()
         };
@@ -1401,12 +1792,102 @@ const server = createServer(async (req, res) => {
           req,
           meta: {
             title: project.title,
-            editorName: project.editorName
+            editorName: project.editorName,
+            editorUserId: project.editorUserId
           }
         });
         return { project: projectSummary(project, db) };
       });
+      if (created.invalidConnection) {
+        return badRequest(res, 'Selected editor must be connected to this creator first');
+      }
       return sendJson(res, 201, created);
+    }
+
+    const projectAssignmentMatch = pathname.match(/^\/api\/projects\/([a-f0-9-]+)\/assignment$/i);
+    if (method === 'PATCH' && projectAssignmentMatch) {
+      const projectId = projectAssignmentMatch[1];
+      const authDb = await readDb();
+      const currentUser = await getCurrentUserFromDb(req, authDb);
+      if (!currentUser) {
+        return unauthorized(res);
+      }
+      if (safeLower(currentUser.role) !== 'creator') {
+        return forbidden(res, 'Only creator users can assign editors');
+      }
+
+      const project = ensureProject(authDb, projectId);
+      if (!project) {
+        return notFound(res);
+      }
+      if (project.creatorUserId !== currentUser.id) {
+        return forbidden(res);
+      }
+
+      const body = await parseJsonBody(req);
+      const valErrors = validate(body, VALIDATION_SCHEMAS.assignProjectEditor);
+      if (valErrors) {
+        return badRequest(res, 'Validation failed', valErrors);
+      }
+
+      const editorUserId = String(body.editorUserId || '').trim();
+      if (!editorUserId) {
+        const updated = await mutateDb((db) => {
+          const latestProject = ensureProject(db, projectId);
+          if (!latestProject) {
+            return { missingProject: true };
+          }
+          latestProject.editorUserId = null;
+          latestProject.editorName = '';
+          logAudit(db, {
+            action: 'project.editor.unassign',
+            projectId,
+            targetType: 'project',
+            targetId: latestProject.id,
+            user: currentUser,
+            req
+          });
+          return { project: projectSummary(latestProject, db) };
+        });
+        if (updated.missingProject) {
+          return notFound(res);
+        }
+        return sendJson(res, 200, updated);
+      }
+
+      const editor = authDb.users.find((user) => user.id === editorUserId && safeLower(user.role) === 'editor');
+      if (!editor) {
+        return notFound(res);
+      }
+      if (!connectionExists(authDb, currentUser.id, editor.id)) {
+        return badRequest(res, 'You can only assign editors who are connected to you');
+      }
+
+      const updated = await mutateDb((db) => {
+        const latestProject = ensureProject(db, projectId);
+        if (!latestProject) {
+          return { missingProject: true };
+        }
+        latestProject.editorUserId = editor.id;
+        latestProject.editorName = editor.name;
+        logAudit(db, {
+          action: 'project.editor.assign',
+          projectId,
+          targetType: 'project',
+          targetId: latestProject.id,
+          user: currentUser,
+          req,
+          meta: {
+            editorUserId: editor.id,
+            editorProfileId: editor.roleProfileId
+          }
+        });
+        return { project: projectSummary(latestProject, db) };
+      });
+      if (updated.missingProject) {
+        return notFound(res);
+      }
+      return sendJson(res, 200, updated);
     }
 
     const projectContextMatch = pathname.match(/^\/api\/projects\/([a-f0-9-]+)\/context$/i);
@@ -2497,10 +2978,6 @@ const server = createServer(async (req, res) => {
       }
     }
 
-    if (method === 'GET' && pathname === '/') {
-      return serveStaticFile(res, path.join(PUBLIC_DIR, 'index.html'));
-    }
-
     if (method === 'GET' && pathname.startsWith('/public/')) {
       const rel = pathname.replace('/public/', '');
       const safe = path.normalize(rel).replace(/^\.\.[/\\]/, '');
@@ -2521,6 +2998,7 @@ const server = createServer(async (req, res) => {
 });
 
 ensureStorage()
+  .then(() => migrateLegacyState())
   .then(() => {
     server.listen(PORT, HOST, () => {
       console.log(`Server running at http://${HOST}:${PORT}`);

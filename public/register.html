@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Register | Creator Editor Workflow</title>
+    <link rel="stylesheet" href="/public/styles.css" />
+  </head>
+  <body>
+    <main class="page-shell auth-layout">
+      <section class="auth-grid">
+        <article class="auth-hero">
+          <p class="eyebrow">Account setup</p>
+          <h1 class="display-title">Create a role-aware account with a persistent Creator ID or Editor ID.</h1>
+          <p class="hero-copy">
+            Registration stores role, credentials, and the public ID used for creator-editor connections inside the app.
+          </p>
+          <div class="hero-stats">
+            <div class="stat-card">
+              <span class="meta">Creators</span>
+              <strong>Creator ID</strong>
+              <span class="meta">Share this with editors so they can connect</span>
+            </div>
+            <div class="stat-card">
+              <span class="meta">Editors</span>
+              <strong>Editor ID</strong>
+              <span class="meta">Receive assignments only from connected creators</span>
+            </div>
+            <div class="stat-card">
+              <span class="meta">Security</span>
+              <strong>Hashed passwords</strong>
+              <span class="meta">Session cookie with CSRF checks on writes</span>
+            </div>
+          </div>
+        </article>
+
+        <article class="auth-card">
+          <p class="eyebrow">Register</p>
+          <h2>Create your account</h2>
+          <p class="muted">Choose the role you need before entering the workflow.</p>
+          <form id="auth-form" data-mode="register" class="stack">
+            <label>
+              Name
+              <input type="text" name="name" required autocomplete="name" placeholder="Your name" />
+            </label>
+            <label>
+              Email
+              <input type="email" name="email" required autocomplete="email" placeholder="you@example.com" />
+            </label>
+            <label>
+              Password
+              <input type="password" name="password" required autocomplete="new-password" placeholder="At least 8 characters" />
+            </label>
+            <label>
+              Role
+              <select name="role" required>
+                <option value="creator">Creator</option>
+                <option value="editor">Editor</option>
+              </select>
+            </label>
+            <button class="button-primary" type="submit">Register</button>
+          </form>
+          <p id="auth-status" class="status" aria-live="polite"></p>
+          <p class="muted">Already registered? <a href="/login">Go to login</a>.</p>
+        </article>
+      </section>
+    </main>
+    <script type="module" src="/public/auth.js"></script>
+  </body>
+  </html>

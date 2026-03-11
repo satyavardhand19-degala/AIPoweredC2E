@@ -3,6 +3,9 @@
 Phase 3.4 persistence abstraction with pluggable state/object stores.
 
 ## What is implemented
+- Registration + login with password-based sessions
+- Role-specific Creator ID / Editor ID for creator-editor connections
+- Separate login, register, creator dashboard, and editor dashboard pages
 - Project creation for creator-editor pairs
 - Video upload by version (`raw`, `v1`, `v2`)
 - In-browser playback of uploaded assets
@@ -14,6 +17,8 @@ Phase 3.4 persistence abstraction with pluggable state/object stores.
 - V1 -> V2 summary endpoint with publish readiness score
 - Project context endpoint for complete workflow state
 - Session-based login/logout (`creator` or `editor`)
+- Role-protected dashboard routes (`/creator-dashboard`, `/editor-dashboard`)
+- Editor-to-creator connection flow via Creator ID
 - Project-level access control on API + uploaded media
 - Role restrictions:
   - creator: create projects, upload `raw`
@@ -32,10 +37,13 @@ Phase 3.4 persistence abstraction with pluggable state/object stores.
 
 ## API surface (MVP)
 - `GET /api/auth/me`
+- `POST /api/auth/register`
 - `POST /api/auth/login`
 - `POST /api/auth/logout`
+- `GET/POST /api/connections`
 - `GET /api/projects`
 - `POST /api/projects`
+- `PATCH /api/projects/:id/assignment`
 - `GET /api/projects/:id/context`
 - `GET /api/projects/:id/audit-logs`
 - `POST /api/projects/:id/upload`
@@ -54,7 +62,7 @@ Phase 3.4 persistence abstraction with pluggable state/object stores.
 npm run dev
 ```
 
-Then open `http://localhost:3000`.
+Then open `http://localhost:3000/login`.
 
 ## Environment
 Copy `.env.example` to `.env` and set values as needed.

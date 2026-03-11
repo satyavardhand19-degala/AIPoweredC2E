@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Editor Dashboard | Creator Editor Workflow</title>
+    <link rel="stylesheet" href="/public/styles.css" />
+  </head>
+  <body data-role-page="editor">
+    <div class="dashboard-shell">
+      <header class="topbar">
+        <div class="brand-row">
+          <div>
+            <p class="eyebrow">Editor Workspace</p>
+            <p class="brand-mark">Creator Editor Workflow</p>
+          </div>
+          <div class="toolbar">
+            <p id="auth-summary" class="meta"></p>
+            <button id="logout-button" class="button-secondary" type="button">Logout</button>
+          </div>
+        </div>
+        <nav id="role-nav" class="nav-links"></nav>
+      </header>
+
+      <main class="dashboard-grid">
+        <section class="hero-panel span-2" id="overview">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Editor dashboard</p>
+              <h1 id="dashboard-title">Editor Dashboard</h1>
+              <p id="dashboard-subtitle" class="muted"></p>
+            </div>
+            <div class="chip-row">
+              <span class="chip">Editor only</span>
+              <span class="chip warn">V1 / V2 uploads</span>
+              <span class="chip neutral">Connected creators</span>
+            </div>
+          </div>
+          <div id="hero-stats" class="hero-stats"></div>
+          <p id="flash-message" class="status" aria-live="polite"></p>
+        </section>
+
+        <section class="panel" id="connections">
+          <div class="panel-header">
+            <div>
+              <h2>Connect to Creator</h2>
+              <p class="meta">Use a Creator ID to unlock creator-approved assignments.</p>
+            </div>
+          </div>
+          <form id="connect-form" class="stack">
+            <label>
+              Creator ID
+              <input type="text" name="creatorId" required placeholder="CR-123ABC" />
+            </label>
+            <button class="button-primary" type="submit">Connect</button>
+          </form>
+          <div id="connections-panel" class="cards"></div>
+        </section>
+
+        <section class="panel" id="workspace">
+          <div class="panel-header">
+            <div>
+              <h2>Assigned Projects</h2>
+              <p class="meta">Only projects assigned to you are accessible here.</p>
+            </div>
+          </div>
+          <div class="stack">
+            <label>
+              Active Project
+              <select id="project-select"></select>
+            </label>
+            <p id="active-project-meta" class="meta"></p>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>Version Upload</h2>
+          <form id="upload-form" class="stack">
+            <label>
+              Version
+              <select id="upload-version" name="versionLabel"></select>
+            </label>
+            <label>
+              Video File
+              <input type="file" name="file" accept="video/*" required />
+            </label>
+            <button class="button-primary" type="submit">Upload Edit</button>
+          </form>
+        </section>
+
+        <section class="panel">
+          <h2>Timestamp Feedback</h2>
+          <form id="feedback-form" class="stack">
+            <label>
+              Version
+              <select name="versionLabel">
+                <option value="v1">V1</option>
+                <option value="v2">V2</option>
+                <option value="raw">Raw</option>
+              </select>
+            </label>
+            <label>
+              Timestamp (seconds)
+              <input type="number" min="0" step="0.1" name="timestampSec" required />
+            </label>
+            <label>
+              Source
+              <select name="source">
+                <option value="text">Text</option>
+                <option value="voice">Voice</option>
+              </select>
+            </label>
+            <label>
+              Feedback
+              <textarea name="text" required placeholder="0:12 tighten the opening caption and remove the pause."></textarea>
+            </label>
+            <button class="button-primary" type="submit">Add Feedback</button>
+          </form>
+          <div class="inline-form-actions">
+            <button id="generate-checklist" class="button-secondary" type="button">Generate Checklist</button>
+            <button id="generate-summary" class="button-secondary" type="button">Generate Summary</button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>Voice Notes</h2>
+          <form id="voice-form" class="stack">
+            <label>
+              Context Type
+              <select name="contextType">
+                <option value="feedback">Feedback</option>
+                <option value="brief">Brief</option>
+              </select>
+            </label>
+            <label>
+              Version
+              <select name="versionLabel">
+                <option value="v1">V1</option>
+                <option value="v2">V2</option>
+                <option value="raw">Raw</option>
+              </select>
+            </label>
+            <label>
+              Timestamp (seconds)
+              <input type="number" min="0" step="0.1" name="timestampSec" value="0" />
+            </label>
+            <label>
+              Audio File
+              <input type="file" name="file" accept="audio/*" required />
+            </label>
+            <button class="button-primary" type="submit">Upload Voice Note</button>
+          </form>
+        </section>
+
+        <section class="panel span-2">
+          <div class="panel-header">
+            <div>
+              <h2>Project Feed</h2>
+              <p class="meta">View content only for the connected creators who assigned it to you.</p>
+            </div>
+          </div>
+          <div id="projects-list" class="cards"></div>
+        </section>
+
+        <section class="panel">
+          <h2>Latest Brief</h2>
+          <div id="latest-brief" class="summary-box"></div>
+        </section>
+
+        <section class="panel">
+          <h2>Feedback + Comments</h2>
+          <div id="comments-list" class="detail-list"></div>
+        </section>
+
+        <section class="panel">
+          <h2>Checklist</h2>
+          <div id="checklist-list" class="checklist"></div>
+        </section>
+
+        <section class="panel">
+          <h2>Voice Note Feed</h2>
+          <div id="voice-notes-list" class="detail-list"></div>
+        </section>
+
+        <section class="panel">
+          <h2>Preview</h2>
+          <p id="preview-meta" class="meta">Select an asset to preview.</p>
+          <div class="preview-box">
+            <video id="preview-video" controls playsinline></video>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>Version Summary</h2>
+          <div id="summary-output" class="summary-box"></div>
+        </section>
+      </main>
+    </div>
+    <script type="module" src="/public/dashboard.js"></script>
+  </body>
+  </html>

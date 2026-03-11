@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Login | Creator Editor Workflow</title>
+    <link rel="stylesheet" href="/public/styles.css" />
+  </head>
+  <body>
+    <main class="page-shell auth-layout">
+      <section class="auth-grid">
+        <article class="auth-hero">
+          <p class="eyebrow">Role-secured workflow</p>
+          <h1 class="display-title">Sign in to your creator or editor workspace.</h1>
+          <p class="hero-copy">
+            Use your email or username, choose the correct role, and continue to the dashboard that matches your permissions.
+          </p>
+          <div class="hero-stats">
+            <div class="stat-card">
+              <span class="meta">Authentication</span>
+              <strong>Session-based</strong>
+              <span class="meta">Cookie + CSRF protected routes</span>
+            </div>
+            <div class="stat-card">
+              <span class="meta">Creator access</span>
+              <strong>Create + assign</strong>
+              <span class="meta">Manage projects and connected editors</span>
+            </div>
+            <div class="stat-card">
+              <span class="meta">Editor access</span>
+              <strong>Connected only</strong>
+              <span class="meta">Work only on assigned creator content</span>
+            </div>
+          </div>
+        </article>
+
+        <article class="auth-card">
+          <p class="eyebrow">Login</p>
+          <h2>Welcome back</h2>
+          <p class="muted">Enter your credentials and role to continue.</p>
+          <form id="auth-form" data-mode="login" class="stack">
+            <label>
+              Email or Username
+              <input type="text" name="identifier" required autocomplete="username" placeholder="name or email" />
+            </label>
+            <label>
+              Password
+              <input type="password" name="password" required autocomplete="current-password" placeholder="Password" />
+            </label>
+            <label>
+              Role
+              <select name="role" required>
+                <option value="creator">Creator</option>
+                <option value="editor">Editor</option>
+              </select>
+            </label>
+            <button class="button-primary" type="submit">Login</button>
+          </form>
+          <p id="auth-status" class="status" aria-live="polite"></p>
+          <p class="muted">Need an account? <a href="/register">Register here</a>.</p>
+        </article>
+      </section>
+    </main>
+    <script type="module" src="/public/auth.js"></script>
+  </body>
+  </html>
