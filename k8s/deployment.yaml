@@ -1,30 +1,51 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: creator-editor-app-config
+data:
+  NODE_ENV: "production"
+  HOST: "0.0.0.0"
+  PORT: "3000"
+  DATA_BACKEND: "postgres"
+  OBJECT_STORE_BACKEND: "s3"
+  RATE_LIMIT_BACKEND: "redis"
+  SESSION_BACKEND: "redis"
+  ENABLE_ASYNC_JOBS: "1"
+  POSTGRES_PORT: "5432"
+  POSTGRES_SSL: "false"
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"
+  S3_REGION: "us-east-1"
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: app-deployment
   labels:
     app: creator-editor-app
+    component: api
 spec:
   replicas: 3
   selector:
     matchLabels:
       app: creator-editor-app
+      component: api
   template:
     metadata:
       labels:
         app: creator-editor-app
+        component: api
     spec:
       containers:
         - name: app
           image: creator-editor-ai-workflow:latest
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: creator-editor-app-config
           env:
-            - name: NODE_ENV
-              value: "production"
-            - name: DATA_BACKEND
-              value: "postgres"
             - name: POSTGRES_HOST
               valueFrom:
                 secretKeyRef:
@@ -45,6 +66,36 @@ spec:
                 secretKeyRef:
                   name: db-secret
                   key: database
+            - name: S3_BUCKET
+              valueFrom:
+                secretKeyRef:
+                  name: s3-secret
+                  key: bucket
+            - name: S3_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: s3-secret
+                  key: accessKeyId
+            - name: S3_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: s3-secret
+                  key: secretAccessKey
+            - name: S3_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                  name: s3-secret
+                  key: endpoint
+                  optional: true
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: app-secret
+                  key: openaiApiKey
+            - name: OPENAI_MODEL
+              value: "gpt-4.1-mini"
+            - name: OPENAI_STT_MODEL
+              value: "gpt-4o-mini-transcribe"
           livenessProbe:
             httpGet:
               path: /api/health
@@ -56,4 +107,111 @@ spec:
               path: /api/health
               port: 3000
             initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-deployment
+  labels:
+    app: creator-editor-app
+    component: worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: creator-editor-app
+      component: worker
+  template:
+    metadata:
+      labels:
+        app: creator-editor-app
+        component: worker
+    spec:
+      containers:
+        - name: worker
+          image: creator-editor-ai-workflow:latest
+          imagePullPolicy: IfNotPresent
+          command: ["node", "worker.mjs"]
+          envFrom:
+            - configMapRef:
+                name: creator-editor-app-config
+          env:
+            - name: POSTGRES_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: db-secret
+                  key: host
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: db-secret
+                  key: username
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-secret
+                  key: password
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: db-secret
+                  key: database
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: app-secret
+                  key: openaiApiKey
+            - name: OPENAI_MODEL
+              value: "gpt-4.1-mini"
+          readinessProbe:
+            exec:
+              command: ["node", "-e", "process.exit(0)"]
+            initialDelaySeconds: 10
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  labels:
+    app: creator-editor-app
+    component: redis
+spec:
+  selector:
+    app: creator-editor-app
+    component: redis
+  ports:
+    - protocol: TCP
+      port: 6379
+      targetPort: 6379
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-deployment
+  labels:
+    app: creator-editor-app
+    component: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: creator-editor-app
+      component: redis
+  template:
+    metadata:
+      labels:
+        app: creator-editor-app
+        component: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports:
+            - containerPort: 6379
+          readinessProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 5
             periodSeconds: 10

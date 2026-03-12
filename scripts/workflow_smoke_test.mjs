@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { mkdir, rm } from 'node:fs/promises';
+import path from 'node:path';
 
 const PORT = 3112;
 const BASE = `http://127.0.0.1:${PORT}`;
+const TEST_DIR = path.join(process.cwd(), 'test-workflow-env');
 
 function waitForServer(proc, timeoutMs = 10000) {
   return new Promise((resolve, reject) => {
@@ -49,13 +52,21 @@ async function request(path, { method = 'GET', body, cookie = '', csrf = '', hea
   return { status: res.status, headers: res.headers, data };
 }
 
-async function login(name, role) {
+async function registerUser({ name, email, password, role }) {
+  return request('/api/auth/register', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name, email, password, role })
+  });
+}
+
+async function login({ identifier, password, role }) {
   const res = await request('/api/auth/login', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ name, role })
+    body: JSON.stringify({ identifier, password, role })
   });
-  assert.equal(res.status, 200, `Login failed for ${name}`);
+  assert.equal(res.status, 200, `Login failed for ${identifier}`);
   return {
     user: res.data.user,
     csrf: res.data.csrfToken,
@@ -64,11 +75,16 @@ async function login(name, role) {
 }
 
 async function run() {
+  await mkdir(TEST_DIR, { recursive: true });
   const server = spawn('node', ['server.mjs'], {
     env: {
       ...process.env,
       PORT: String(PORT),
       HOST: '127.0.0.1',
+      DATA_BACKEND: 'sqlite',
+      DATA_DIR: path.join(TEST_DIR, 'data'),
+      UPLOAD_DIR: path.join(TEST_DIR, 'uploads'),
+      NODE_ENV: 'test',
       RATE_LIMIT_AUTH_MAX: '30',
       RATE_LIMIT_MAX: '300'
     },
@@ -79,8 +95,44 @@ async function run() {
     await waitForServer(server);
 
     const unique = Date.now();
-    const creator = await login(`FlowCreator_${unique}`, 'creator');
-    const editor = await login(`FlowEditor_${unique}`, 'editor');
+    const creatorEmail = `flow_creator_${unique}@example.com`;
+    const editorEmail = `flow_editor_${unique}@example.com`;
+
+    const creatorRegister = await registerUser({
+      name: `FlowCreator_${unique}`,
+      email: creatorEmail,
+      password: 'Password123',
+      role: 'creator'
+    });
+    assert.equal(creatorRegister.status, 201, 'Creator registration failed');
+
+    const editorRegister = await registerUser({
+      name: `FlowEditor_${unique}`,
+      email: editorEmail,
+      password: 'Password123',
+      role: 'editor'
+    });
+    assert.equal(editorRegister.status, 201, 'Editor registration failed');
+
+    const creator = await login({
+      identifier: creatorEmail,
+      password: 'Password123',
+      role: 'creator'
+    });
+    const editor = await login({
+      identifier: editorEmail,
+      password: 'Password123',
+      role: 'editor'
+    });
+
+    const connectEditor = await request('/api/connections', {
+      method: 'POST',
+      cookie: editor.cookie,
+      csrf: editor.csrf,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ creatorId: creatorRegister.data.user.profileId })
+    });
+    assert.equal(connectEditor.status, 201, 'Editor connection failed');
 
     const createProject = await request('/api/projects', {
       method: 'POST',
@@ -89,8 +141,7 @@ async function run() {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         title: `Flow Project ${unique}`,
-        creatorName: creator.user.name,
-        editorName: editor.user.name
+        editorUserId: editor.user.id
       })
     });
     assert.equal(createProject.status, 201, 'Project creation failed');
@@ -205,6 +256,7 @@ async function run() {
     console.log('Workflow smoke test passed');
   } finally {
     server.kill('SIGTERM');
+    await rm(TEST_DIR, { recursive: true, force: true });
   }
 }
 

@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { mkdir, rm } from 'node:fs/promises';
+import path from 'node:path';
 
 const PORT = 3111;
 const BASE = `http://127.0.0.1:${PORT}`;
+const TEST_DIR = path.join(process.cwd(), 'test-security-env');
 
 function waitForServer(proc, timeoutMs = 10000) {
   return new Promise((resolve, reject) => {
@@ -59,12 +62,31 @@ async function request(path, { method = 'GET', body, cookie = '', csrf = '', jso
   };
 }
 
+async function registerUser({ name, email, password, role }) {
+  return request('/api/auth/register', {
+    method: 'POST',
+    body: { name, email, password, role }
+  });
+}
+
+async function loginUser({ identifier, password, role }) {
+  return request('/api/auth/login', {
+    method: 'POST',
+    body: { identifier, password, role }
+  });
+}
+
 async function run() {
+  await mkdir(TEST_DIR, { recursive: true });
   const server = spawn('node', ['server.mjs'], {
     env: {
       ...process.env,
       PORT: String(PORT),
       HOST: '127.0.0.1',
+      DATA_BACKEND: 'sqlite',
+      DATA_DIR: path.join(TEST_DIR, 'data'),
+      UPLOAD_DIR: path.join(TEST_DIR, 'uploads'),
+      NODE_ENV: 'test',
       RATE_LIMIT_AUTH_MAX: '6',
       RATE_LIMIT_MAX: '200'
     },
@@ -77,12 +99,20 @@ async function run() {
     const unauthProjects = await request('/api/projects');
     assert.equal(unauthProjects.status, 401, 'Unauthenticated projects call should be 401');
 
-    const creatorLogin = await request('/api/auth/login', {
-      method: 'POST',
-      body: {
-        name: `TestCreator_${Date.now()}`,
-        role: 'creator'
-      }
+    const unique = Date.now();
+    const creatorEmail = `security_creator_${unique}@example.com`;
+    const creatorRegister = await registerUser({
+      name: `TestCreator_${unique}`,
+      email: creatorEmail,
+      password: 'Password123',
+      role: 'creator'
+    });
+    assert.equal(creatorRegister.status, 201, 'Creator registration should succeed');
+
+    const creatorLogin = await loginUser({
+      identifier: creatorEmail,
+      password: 'Password123',
+      role: 'creator'
     });
     assert.equal(creatorLogin.status, 200, 'Creator login should succeed');
     assert.ok(creatorLogin.data?.csrfToken, 'Creator login should return csrfToken');
@@ -92,9 +122,7 @@ async function run() {
     const noCsrfCreate = await request('/api/projects', {
       method: 'POST',
       body: {
-        title: 'CSRF Block Test',
-        creatorName: creatorLogin.data.user.name,
-        editorName: 'EditorX'
+        title: 'CSRF Block Test'
       },
       cookie: creatorCookie
     });
@@ -103,21 +131,26 @@ async function run() {
     const withCsrfCreate = await request('/api/projects', {
       method: 'POST',
       body: {
-        title: 'CSRF Allowed Test',
-        creatorName: creatorLogin.data.user.name,
-        editorName: 'EditorX'
+        title: 'CSRF Allowed Test'
       },
       cookie: creatorCookie,
       csrf: creatorLogin.data.csrfToken
     });
     assert.equal(withCsrfCreate.status, 201, 'Valid CSRF should allow project creation');
 
-    const editorLogin = await request('/api/auth/login', {
-      method: 'POST',
-      body: {
-        name: `TestEditor_${Date.now()}`,
-        role: 'editor'
-      }
+    const editorEmail = `security_editor_${unique}@example.com`;
+    const editorRegister = await registerUser({
+      name: `TestEditor_${unique}`,
+      email: editorEmail,
+      password: 'Password123',
+      role: 'editor'
+    });
+    assert.equal(editorRegister.status, 201, 'Editor registration should succeed');
+
+    const editorLogin = await loginUser({
+      identifier: editorEmail,
+      password: 'Password123',
+      role: 'editor'
     });
     assert.equal(editorLogin.status, 200, 'Editor login should succeed');
     const editorCookie = parseCookie(editorLogin.headers.get('set-cookie'));
@@ -125,9 +158,7 @@ async function run() {
     const editorCreate = await request('/api/projects', {
       method: 'POST',
       body: {
-        title: 'Editor Should Fail Create',
-        creatorName: 'Someone',
-        editorName: editorLogin.data.user.name
+        title: 'Editor Should Fail Create'
       },
       cookie: editorCookie,
       csrf: editorLogin.data.csrfToken
@@ -136,12 +167,10 @@ async function run() {
 
     let sawRateLimit = false;
     for (let i = 0; i < 12; i += 1) {
-      const r = await request('/api/auth/login', {
-        method: 'POST',
-        body: {
-          name: `BurstUser_${i}_${Date.now()}`,
-          role: 'creator'
-        }
+      const r = await loginUser({
+        identifier: creatorEmail,
+        password: `WrongPassword${i}`,
+        role: 'creator'
       });
       if (r.status === 429) {
         sawRateLimit = true;
@@ -153,6 +182,7 @@ async function run() {
     console.log('Security smoke test passed');
   } finally {
     server.kill('SIGTERM');
+    await rm(TEST_DIR, { recursive: true, force: true });
   }
 }
 

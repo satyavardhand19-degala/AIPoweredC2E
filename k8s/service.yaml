@@ -6,6 +6,7 @@ spec:
   type: LoadBalancer
   selector:
     app: creator-editor-app
+    component: api
   ports:
     - protocol: TCP
       port: 80
