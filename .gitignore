@@ -29,7 +29,7 @@ __pycache__/
 # Env / secrets
 .env
 .env.*
-!.env.example
+.env.example*
 
 # OS/editor
 .DS_Store
@@ -43,6 +43,12 @@ Thumbs.db
 # Logs
 *.log
 logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.pid
+*.pid.lock
 
 # Build artifacts
 *.tmp
@@ -52,6 +58,7 @@ builds/
 artifact/
 artifacts/
 .executables/
+.nyc_output/
 *.exe
 *.bin
 *.dll
@@ -61,6 +68,8 @@ artifacts/
 # Local runtime state
 data/db.json
 data/app_state.db
+data/app_state.db-shm
+data/app_state.db-wal
 uploads/*
 !uploads/.gitkeep
 !data/.gitkeep
