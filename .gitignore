@@ -48,6 +48,7 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 *.pid
+interview_qa.html
 *.pid.lock
 
 # Build artifacts
